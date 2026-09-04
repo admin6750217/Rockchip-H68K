@@ -5,6 +5,11 @@ CONFIG_TARGET_MULTI_PROFILE=y
 CONFIG_TARGET_rockchip_armv8_DEVICE_hinlink_opc-h68k=y
 CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h68k=y
 
+# CONFIG_PACKAGE_kmod-drm-panfrost is not set
+# CONFIG_PACKAGE_kmod-drm-rockchip is not set
+
+
+
 CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_h88k=n
 CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h6xk=n
 
