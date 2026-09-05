@@ -79,6 +79,14 @@ jobs:
           sudo -E systemctl daemon-reload
           sudo -E timedatectl set-timezone "Asia/Shanghai"
 
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo swapoff /mnt/swapfile 2>/dev/null || true
+          sudo rm -f /mnt/swapfile
+          sudo fallocate -l 8G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+
           sudo mkdir -p /mnt/build_wrt
           sudo chown $USER:$USER /mnt/build_wrt
           sudo ln -s /mnt/build_wrt $GITHUB_WORKSPACE/wrt
@@ -184,9 +192,25 @@ jobs:
         run: |
           cd ./wrt/
 
-          make -j$(nproc) || make -j1 V=s
+          make -j$(nproc) 2>&1 | tee "$GITHUB_WORKSPACE/compile.log"
+          BUILD_STATUS=${PIPESTATUS[0]}
+
+          if [ "$BUILD_STATUS" -ne 0 ]; then
+            make -j1 V=s 2>&1 | tee "$GITHUB_WORKSPACE/compile-verbose.log"
+            exit ${PIPESTATUS[0]}
+          fi
+
+      - name: Upload Compile Logs
+        if: failure() && env.WRT_TEST != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-logs-${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{env.WRT_BRANCH}}
+          path: |
+            compile.log
+            compile-verbose.log
 
       - name: Machine Information
+        if: always()
         run: |
           cd ./wrt/
 
