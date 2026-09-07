@@ -34,8 +34,12 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
+
     steps:
 
+    # =========================================================
+    # 最大化磁盘空间
+    # =========================================================
     - name: 合并磁盘
       uses: easimon/maximize-build-space@master
       with:
@@ -46,19 +50,97 @@ jobs:
         remove-android: 'true'
         remove-haskell: 'true'
 
+    # =========================================================
+    # 进一步清理 CI 环境
+    # =========================================================
+    - name: 清理 CI 环境
+      shell: bash
+      run: |
+        set -e
+
+        echo "=============================================================================="
+        echo "Freeing up disk space on CI system"
+        echo "=============================================================================="
+
+        echo "========== 当前磁盘空间 =========="
+        df -hT
+
+        echo "========== 最大的 100 个已安装软件包 =========="
+        dpkg-query -Wf '${Installed-Size}\t${Package}\n' \
+          | sort -n \
+          | tail -n 100 || true
+
+        echo "========== 移除大型软件包 =========="
+
+        sudo apt-get -y purge firefox || true
+        sudo apt-get remove -y '^dotnet-.*' || true
+        sudo apt-get remove -y '^llvm-.*' || true
+        sudo apt-get remove -y 'php.*' || true
+        sudo apt-get remove -y '^mongodb-.*' || true
+        sudo apt-get remove -y '^mysql-.*' || true
+
+        sudo apt-get remove -y \
+          azure-cli \
+          google-cloud-sdk \
+          hhvm \
+          google-chrome-stable \
+          firefox \
+          powershell \
+          mono-devel || true
+
+        echo "========== 清理 APT =========="
+
+        sudo apt-get autoremove --purge -y || true
+        sudo apt-get autoclean || true
+        sudo apt-get clean || true
+
+        echo "========== 删除大型目录 =========="
+
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/graalvm
+        sudo rm -rf /usr/local/.ghcup
+        sudo rm -rf /usr/local/share/powershell
+        sudo rm -rf /usr/local/share/chromium
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /usr/local/lib/node_modules
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+
+        echo "========== 清理 Docker =========="
+
+        docker system prune -af --volumes || true
+
+        echo "========== 清理 GitHub Actions 工具缓存 =========="
+
+        sudo rm -rf /opt/hostedtoolcache
+
+        echo "========== 清理完成 =========="
+        df -hT
+
+    # =========================================================
+    # 检出配置文件
+    # =========================================================
     - name: 检出配置文件
       uses: actions/checkout@v4
 
+    # =========================================================
+    # 检查服务器
+    # =========================================================
     - name: 检查服务器配置
       run: |
         echo "========== CPU =========="
         nproc
         lscpu | grep -E 'Model name|CPU\(s\)' || true
+
         echo "========== 内存 =========="
         free -h
+
         echo "========== 磁盘 =========="
         df -hT
 
+    # =========================================================
+    # 初始化编译环境
+    # =========================================================
     - name: 初始化编译环境
       env:
         DEBIAN_FRONTEND: noninteractive
@@ -102,12 +184,18 @@ jobs:
 
         sudo timedatectl set-timezone "$TZ"
 
+    # =========================================================
+    # 创建工作目录
+    # =========================================================
     - name: 创建工作目录
       run: |
         sudo mkdir -p "$WORKDIR"
         sudo chown -R "$USER:$USER" "$WORKDIR"
         echo "WORKDIR_PATH=$WORKDIR" >> "$GITHUB_ENV"
 
+    # =========================================================
+    # 克隆 OpenWrt
+    # =========================================================
     - name: 克隆源码
       working-directory: ${{ env.WORKDIR }}
       run: |
@@ -118,6 +206,9 @@ jobs:
 
         echo "源码目录：$WORKDIR/istoreos"
 
+    # =========================================================
+    # 检查配置文件
+    # =========================================================
     - name: 检查配置文件
       run: |
         echo "========== 检查自定义文件 =========="
@@ -149,27 +240,42 @@ jobs:
 
         echo "配置文件检查通过"
 
+    # =========================================================
+    # 加载 feeds
+    # =========================================================
     - name: 加载 feeds
       run: |
         cp "$FEEDS_FILE" "$OPENWRT_DIR/feeds.conf"
         echo "feeds.conf 已加载"
 
+    # =========================================================
+    # DIY Part 1
+    # =========================================================
     - name: 执行 DIY Part 1
       run: |
         chmod +x "$DIY_P1_SH"
         cd "$OPENWRT_DIR"
         "$GITHUB_WORKSPACE/$DIY_P1_SH"
 
+    # =========================================================
+    # 更新 feeds
+    # =========================================================
     - name: 更新 feeds
       working-directory: ${{ env.OPENWRT_DIR }}
       run: |
         ./scripts/feeds update -a
 
+    # =========================================================
+    # 安装 feeds
+    # =========================================================
     - name: 安装 feeds
       working-directory: ${{ env.OPENWRT_DIR }}
       run: |
         ./scripts/feeds install -a
 
+    # =========================================================
+    # 加载配置
+    # =========================================================
     - name: 加载配置
       run: |
         cp "$CONFIG_FILE" "$OPENWRT_DIR/.config"
@@ -182,16 +288,23 @@ jobs:
         echo "主配置已加载：$OPENWRT_DIR/.config"
         echo "插件配置已加载"
 
+    # =========================================================
+    # DIY Part 2
+    # =========================================================
     - name: 执行 DIY Part 2
       run: |
         chmod +x "$DIY_P2_SH"
         cd "$OPENWRT_DIR"
         "$GITHUB_WORKSPACE/$DIY_P2_SH"
 
+    # =========================================================
+    # 生成最终配置
+    # =========================================================
     - name: 生成最终配置
       working-directory: ${{ env.OPENWRT_DIR }}
       run: |
         echo "========== make defconfig =========="
+
         make defconfig
 
         echo "========== 检查目标设备 =========="
@@ -204,17 +317,23 @@ jobs:
 
         if [ "$COUNT" -ne 1 ]; then
           echo "ERROR: Rockchip ARM64 目标设备不是唯一设备"
+
           grep \
             '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$' \
             .config || true
+
           exit 1
         fi
 
         echo "========== 最终 .config =========="
+
         grep '^CONFIG_TARGET_' .config | head -50
 
         cp .config "$GITHUB_WORKSPACE/final.config"
 
+    # =========================================================
+    # 上传最终配置
+    # =========================================================
     - name: 上传最终 .config
       uses: actions/upload-artifact@v4
       with:
@@ -222,6 +341,9 @@ jobs:
         path: final.config
         retention-days: 30
 
+    # =========================================================
+    # 上传完整构建配置
+    # =========================================================
     - name: 上传配置文件
       uses: actions/upload-artifact@v4
       with:
@@ -230,25 +352,36 @@ jobs:
           ${{ env.OPENWRT_DIR }}/.config
           ${{ env.OPENWRT_DIR }}/feeds.conf
           ${{ env.PACKAGE_CONFIG }}
+        retention-days: 30
 
+    # =========================================================
+    # 编译缓存
+    # =========================================================
     - name: 缓存编译
       uses: klever1988/cachewrtbuild@main
       with:
         ccache: 'true'
-        mixkey: istoreos-${{ env.REPO_BRANCH }}-armv8
+        mixkey: openwrt-${{ env.REPO_BRANCH }}-armv8
         prefix: ${{ env.OPENWRT_DIR }}
 
+    # =========================================================
+    # 下载软件包
+    # =========================================================
     - name: 下载软件包
-      if: ${{ inputs.build_firmware != 'false' }}
+      if: ${{ inputs.build_firmware != false }}
       working-directory: ${{ env.OPENWRT_DIR }}
       run: |
         make download -j8
+
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
+    # =========================================================
+    # 编译固件
+    # =========================================================
     - name: 编译固件
       id: compile
-      if: ${{ inputs.build_firmware != 'false' }}
+      if: ${{ inputs.build_firmware != false }}
       working-directory: ${{ env.OPENWRT_DIR }}
       run: |
         echo "========== 开始编译 =========="
@@ -261,6 +394,9 @@ jobs:
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> "$GITHUB_ENV"
         echo "status=success" >> "$GITHUB_OUTPUT"
 
+    # =========================================================
+    # 检查编译结果
+    # =========================================================
     - name: 检查编译结果
       if: steps.compile.outputs.status == 'success'
       working-directory: ${{ env.OPENWRT_DIR }}
@@ -268,6 +404,9 @@ jobs:
         echo "========== 编译结果 =========="
         find bin/targets -type f | sort
 
+    # =========================================================
+    # 查找 KO 驱动
+    # =========================================================
     - name: 查找 KO 驱动
       if: steps.compile.outputs.status == 'success'
       working-directory: ${{ env.OPENWRT_DIR }}
@@ -275,12 +414,18 @@ jobs:
         echo "========== KO 驱动 =========="
         find . -type f -name "*.ko" | head -200
 
+    # =========================================================
+    # 检查磁盘空间
+    # =========================================================
     - name: 检查磁盘空间
       if: always()
       run: |
         echo "========== 磁盘空间 =========="
         df -hT
 
+    # =========================================================
+    # 上传 bin
+    # =========================================================
     - name: 上传 bin 文件夹
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       uses: actions/upload-artifact@v4
@@ -289,11 +434,15 @@ jobs:
         path: ${{ env.OPENWRT_DIR }}/bin
         retention-days: 30
 
+    # =========================================================
+    # 整理固件
+    # =========================================================
     - name: 整理固件
       id: organize
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
       run: |
         cd "$OPENWRT_DIR/bin/targets/"*/*
+
         rm -rf packages
 
         echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
@@ -302,6 +451,9 @@ jobs:
         echo "========== 固件 =========="
         ls -lh
 
+    # =========================================================
+    # 上传固件目录
+    # =========================================================
     - name: 上传固件目录
       if: steps.organize.outputs.status == 'success'
       uses: actions/upload-artifact@v4
@@ -310,6 +462,9 @@ jobs:
         path: ${{ env.FIRMWARE }}
         retention-days: 30
 
+    # =========================================================
+    # 生成 Release
+    # =========================================================
     - name: 生成发布信息
       id: tag
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
@@ -319,7 +474,7 @@ jobs:
         echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
 
         cat > release.txt <<EOF
-        ## iStoreOS 6.x
+        ## OpenWrt ARMv8
 
         - 架构：armv8
         - 源码：$REPO_URL
@@ -334,6 +489,9 @@ jobs:
 
         echo "status=success" >> "$GITHUB_OUTPUT"
 
+    # =========================================================
+    # 发布固件
+    # =========================================================
     - name: 发布固件
       uses: softprops/action-gh-release@v2
       if: steps.tag.outputs.status == 'success'
@@ -342,6 +500,9 @@ jobs:
         body_path: release.txt
         files: ${{ env.FIRMWARE }}/*
 
+    # =========================================================
+    # 删除旧 Workflow
+    # =========================================================
     - name: 删除旧 Workflow
       uses: xiaomeng9597/delete-workflow-runs@main
       if: always()
@@ -350,6 +511,9 @@ jobs:
         keep_minimum_runs: 15
         token: ${{ env.GITHUB_TOKEN }}
 
+    # =========================================================
+    # 删除旧 Releases
+    # =========================================================
     - name: 删除旧 Releases
       uses: dev-drprasad/delete-older-releases@v0.3.3
       if: env.UPLOAD_RELEASE == 'true'
