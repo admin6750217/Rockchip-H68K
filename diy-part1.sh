@@ -7,57 +7,31 @@
 # Blog: https://p3terx.com
 #===============================================
 
-# 修复系统kernel内核md5校验码不正确的问题
-# https://downloads.openwrt.org/releases/24.10.5/targets/rockchip/armv8/kmods/
-# https://archive.openwrt.org/releases/24.10.5/targets/rockchip/armv8/kmods/
-# https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/24.10.5/targets/rockchip/armv8/kmods/
-# https://mirrors.cqupt.edu.cn/openwrt/releases/24.10.5/targets/rockchip/armv8/kmods/
-# https://mirrors.ustc.edu.cn/openwrt/releases/24.10.5/targets/rockchip/armv8/kmods/
+# =========================================================
+# 无线网络：开机自动启用
+# =========================================================
 
-hash_value=""
-Releases_version=$(cat include/version.mk | sed -n 's|.*releases/\([^)]*\)).*|\1|p')
+mkdir -p files/etc/uci-defaults
 
-if [ -z "$Releases_version" ]; then
-    Releases_version=$(cat package/base-files/image-config.in | sed -n 's|.*releases/\([^"]*\)".*|\1|p')
-fi
+cat > files/etc/uci-defaults/99-enable-wifi <<'EOF'
+#!/bin/sh
 
-http_value=$(wget -qO- "https://downloads.openwrt.org/releases/${Releases_version}/targets/rockchip/armv8/kmods/")
-hash_value=$(echo "$http_value" | sed -n 's/^.*-\([0-9a-f]\{32\}\)\/.*/\1/p' | head -1)
+# 如果无线配置不存在，则生成无线配置
+[ -f /etc/config/wireless ] || wifi config
 
-if [ -z "$hash_value" ]; then
-    http_value=$(wget -qO- "https://archive.openwrt.org/releases/${Releases_version}/targets/rockchip/armv8/kmods/")
-    hash_value=$(echo "$http_value" | sed -n 's/^.*-\([0-9a-f]\{32\}\)\/.*/\1/p' | head -1)
-fi
+# 启用所有 Wi-Fi 射频设备
+uci -q show wireless | grep '=wifi-device' | cut -d. -f2 | while read radio; do
+    uci -q set wireless.$radio.disabled='0'
+done
 
-if [ -z "$hash_value" ]; then
-    http_value=$(wget -qO- "https://mirrors.tuna.tsinghua.edu.cn/openwrt/releases/${Releases_version}/targets/rockchip/armv8/kmods/")
-    hash_value=$(echo "$http_value" | sed -n 's/^.*-\([0-9a-f]\{32\}\)\/.*/\1/p' | head -1)
-fi
+# 启用所有 Wi-Fi 接口
+uci -q show wireless | grep '=wifi-iface' | cut -d. -f2 | while read iface; do
+    uci -q set wireless.$iface.disabled='0'
+done
 
-if [ -z "$hash_value" ]; then
-    http_value=$(wget -qO- "https://mirrors.cqupt.edu.cn/openwrt/releases/${Releases_version}/targets/rockchip/armv8/kmods/")
-    hash_value=$(echo "$http_value" | sed -n 's/^.*-\([0-9a-f]\{32\}\)\/.*/\1/p' | head -1)
-fi
+uci commit wireless
 
-if [ -z "$hash_value" ]; then
-    http_value=$(wget -qO- "https://mirrors.ustc.edu.cn/openwrt/releases/${Releases_version}/targets/rockchip/armv8/kmods/")
-    hash_value=$(echo "$http_value" | sed -n 's/^.*-\([0-9a-f]\{32\}\)\/.*/\1/p' | head -1)
-fi
+exit 0
+EOF
 
-hash_value=${hash_value:-$(echo "$http_value" | sed -n 's/.*\([0-9a-f]\{32\}\)\/.*/\1/p' | head -1)}
-if [ -n "$hash_value" ] && [[ "$hash_value" =~ ^[0-9a-f]{32}$ ]]; then
-    echo "$hash_value" > .vermagic
-    echo "kernel内核md5校验码：$hash_value"
-else
-    echo "警告：请求所有链接均未获取到有效校验码，请修复！"
-    exit 1
-fi
-
-# 修改版本为编译日期，数字类型。
-# date_version=$(date +"%Y%m%d%H")
-# echo $date_version > version
-
-# 为iStoreOS固件版本加上编译作者
-# author="xiaomeng9597"
-# sed -i "s/DISTRIB_DESCRIPTION.*/DISTRIB_DESCRIPTION='%D %V ${date_version} by ${author}'/g" package/base-files/files/etc/openwrt_release
-# sed -i "s/OPENWRT_RELEASE.*/OPENWRT_RELEASE=\"%D %V ${date_version} by ${author}\"/g" package/base-files/files/usr/lib/os-release
+chmod +x files/etc/uci-defaults/99-enable-wifi
