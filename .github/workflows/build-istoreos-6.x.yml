@@ -1,0 +1,248 @@
+name: Build iStore OS 6.x
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    # inputs:
+      # ssh:
+        # description: 'SSH connection to Actions'
+        # required: false
+        # default: 'false'
+  schedule:
+   - cron: 0 16 * * *
+
+env:
+  REPO_URL: https://github.com/istoreos/istoreos
+  # REPO_BRANCH: main
+  # 仓库内的自定义文件入口：
+  # - armv8/feeds.conf        -> 覆盖 openwrt/feeds.conf
+  # - armv8/.config           -> 覆盖 openwrt/.config
+  # - diy-part1-6.x.sh        -> 在 openwrt 源码目录内执行的第一段补丁脚本
+  # - diy-part2-6.x.sh        -> 在 openwrt 源码目录内执行的第二段补丁脚本
+  # - files/                  -> 若存在，会合并到 openwrt/files/
+  FEEDS_CONF: feeds.conf
+  CONFIG_FILE: armv8/.config
+  DIY_P1_SH: diy-part1-6.x.sh
+  DIY_P2_SH: diy-part2-6.x.sh
+  UPLOAD_BIN_DIR: true
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
+  GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        REPO_BRANCH:
+          # - main
+          - istoreos-24.10
+          # - istoreos-23.05
+        ARCHITECTURE:
+          - armv8
+        os:
+          - ubuntu-22.04
+
+      fail-fast: false
+
+    steps:
+    - name: 合并磁盘
+      uses: easimon/maximize-build-space@master
+      with:
+        swap-size-mb: 1024
+        temp-reserve-mb: 100
+        root-reserve-mb: 1024
+
+    - name: 准备完成
+      uses: actions/checkout@main
+
+    - name: 创建工作目录
+      run: |
+        mkdir -p ${GITHUB_WORKSPACE}/workdir
+        chmod 755 ${GITHUB_WORKSPACE}/workdir
+        echo "WORKDIR_PATH=$PWD" >> $GITHUB_ENV
+
+    - name: 检查服务器配置
+      run: |
+        echo "若分配的服务器性能不足，务必及时取消，重新运行！"
+        echo -e "------------------------------- CPU信息 -------------------------------\n"
+        echo "CPU物理数量:$(cat /proc/cpuinfo| grep "physical id"| sort| uniq| wc -l)"
+        echo -e "CPU核心及版本信息: $(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
+        echo -e "------------------------------- 内存信息 -------------------------------\n"
+        echo "已安装内存详细信息: "
+        sudo lshw -short -C memory | grep GiB
+        echo -e "\n"
+        echo -e "------------------------------- 磁盘信息 -------------------------------\n"
+        echo -e "磁盘数量: $(ls /dev/sd* | grep -v [1-9] | wc -l) \n"
+        echo "------------------------------- 磁盘详情 -------------------------------\n"
+        df -Th
+
+    - name: 初始化编译环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        echo "------------------------------- 更新并安装依赖 -------------------------------"
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android /opt/ghc
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install $(cat $GITHUB_WORKSPACE/depends/${{ matrix.os }})
+        wget https://bootstrap.pypa.io/pip/3.6/get-pip.py
+        sudo python3 get-pip.py
+        sudo rm -rf get-pip.py
+        sudo pip install pyelftools
+        echo "------------------------------- 清理Docker镜像和软件 -------------------------------"
+        [ -n "$(docker images -q)" ] && docker rmi $(docker images -q)
+        docker image prune -a -f
+        sudo -E apt-get -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* adoptopenjdk* mysql* php* mongodb* dotnet* moby* snapd* android* || true
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
+        echo "------------------------------- 设置时区 -------------------------------"
+        sudo timedatectl set-timezone "$TZ"
+
+    - name: 克隆源码
+      working-directory: ${{ env.WORKDIR_PATH }}/workdir
+      run: |
+        df -hT $PWD
+        git clone $REPO_URL -b ${{ matrix.REPO_BRANCH }} openwrt
+        ln -sf ${{ env.WORKDIR_PATH }}/workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+    - name: 缓存构建动作
+      uses: klever1988/cachewrtbuild@main
+      with:
+        ccache: 'true'
+        mixkey: ${{ matrix.os }}-${{ matrix.ARCHITECTURE }}-${{ matrix.REPO_BRANCH }}
+        prefix: ${{ github.workspace }}/openwrt
+
+    - name: 加载自定义 feeds
+      env:
+        FEEDS_CONF_PATH: ${{ matrix.ARCHITECTURE }}/${{ env.FEEDS_CONF }}
+      run: |
+        # 读取仓库路径：./armv8/feeds.conf
+        # 写入目标路径：openwrt/feeds.conf
+        [ -e $FEEDS_CONF_PATH ] && mv $FEEDS_CONF_PATH openwrt/$FEEDS_CONF
+        chmod +x $DIY_P1_SH
+        cd openwrt
+        # 执行仓库根目录下的 diy-part1-6.x.sh
+        $GITHUB_WORKSPACE/$DIY_P1_SH
+
+    - name: 更新 feeds
+      run: cd openwrt && ./scripts/feeds update -a
+
+    - name: 安装 feeds
+      run: cd openwrt && ./scripts/feeds install -a
+
+    - name: 加载自定义配置
+      run: |
+        # 若仓库根目录存在 ./files/，会合并到 openwrt/files/
+        [ -e files ] && mv files openwrt/files
+        # 只使用仓库路径：./armv8/.config
+        # 复制到目标路径：openwrt/.config
+        if [ ! -s "$GITHUB_WORKSPACE/$CONFIG_FILE" ]; then
+          echo "缺少配置文件: $GITHUB_WORKSPACE/$CONFIG_FILE"
+          exit 1
+        fi
+        cp "$GITHUB_WORKSPACE/$CONFIG_FILE" openwrt/.config
+        chmod +x $DIY_P2_SH
+        cd openwrt
+        # 执行仓库根目录下的 diy-part2-6.x.sh
+        $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    # - name: SSH 连接到 Actions
+      # uses: P3TERX/ssh2actions@main
+      # if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
+      # env:
+        # TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        # TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+
+    - name: 下载软件包
+      id: package
+      run: |
+        cd openwrt
+        # 读取 openwrt/.config 生成最终依赖图
+        make defconfig
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: 编译固件
+      id: compile
+      run: |
+        cd openwrt
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) || make -j1 || make -j1 V=s
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+        echo "status=success" >> ${GITHUB_OUTPUT}
+
+    - name: 检查磁盘空间
+      if: (!cancelled())
+      run: df -hT
+
+    - name: 上传 bin 文件夹
+      uses: actions/upload-artifact@main
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+      with:
+        name: OpenWrt_bin${{ env.FILE_DATE }}
+        path: openwrt/bin
+
+    - name: 整理固件文件
+      id: organize
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      run: |
+        # 固件输出目录：openwrt/bin/targets/*/*
+        cd openwrt/bin/targets/*/*
+        rm -rf packages
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
+        echo "status=success" >> ${GITHUB_OUTPUT}
+
+    - name: 上传固件目录
+      uses: actions/upload-artifact@main
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        name: OpenWrt_firmware${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}
+
+    - name: 生成发布标签
+      id: tag
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
+      run: |
+        echo "release_tag=$(date +"%Y.%m.%d-%H.%M")-${{ matrix.ARCHITECTURE }}" >> ${GITHUB_OUTPUT}
+        touch release.txt
+        echo "
+        💻 架构: ${{ matrix.ARCHITECTURE }}
+
+        📂 源码: ${{ env.REPO_URL }}
+
+        🌳 分支: ${{ matrix.REPO_BRANCH }}
+
+        ⏱️ 编译时间: $(date +"%Y年%m月%d日%H时%M分")
+
+        🌐 管理地址: 192.168.100.1
+
+        👤 用户名: root
+
+        🔒 密码: password
+
+        📒 说明: 单网口设备默认网口为LAN，旁路由模式，需要接入主路由器后进后台查找对应IP地址访问，反之双网口设备默认网口为WAN+LAN，主路由模式。 " >> release.txt
+        echo "status=success" >> ${GITHUB_OUTPUT}
+
+    - name: 自动发布固件到 Releases
+      uses: softprops/action-gh-release@v2
+      if: steps.tag.outputs.status == 'success' && !cancelled()
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: ${{ env.FIRMWARE }}/*
+
+    - name: 删除运行记录
+      uses: xiaomeng9597/delete-workflow-runs@main
+      with:
+        retain_days: 20
+        keep_minimum_runs: 15
+        token: ${{ env.GITHUB_TOKEN }}
+
+    - name: 删除自动发布的旧固件
+      uses: dev-drprasad/delete-older-releases@v0.3.3
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      with:
+        keep_latest: 60
+        delete_tags: true
