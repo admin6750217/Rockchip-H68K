@@ -1,302 +1,198 @@
-name: Build iStore OS 6.x # 工作流名称
+name: iStoreOS H6XK
 
-on: # 触发条件
-  repository_dispatch: # 仓库事件触发
-  workflow_dispatch: # 手动触发
-    inputs: # 手动输入项
-      ssh: # SSH 调试开关
-        description: 'SSH connection to Actions' # 输入说明
-        required: false # 非必填
-        type: boolean # 复选框
-        default: 'false' # 默认关闭
-      config_only: # 仅生成配置文件开关
-        description: 'Only generate final .config file' # 输入说明
-        required: false # 非必填
-        type: boolean # 复选框
-        default: false # 默认关闭
-      device: # 设备选择
-        description: 'Target device' # 输入说明
-        required: false # 非必填
-        type: choice # 下拉框
-        default: H66K/H68K/H69K # 默认设备
-        options: # 设备列表
-          - H66K/H68K/H69K # 友善千兆/2.5G 设备组
-          - H88K # 另一款 Hinlink 设备
-          - R5S # NanoPi R5S
-          - R6S # NanoPi R6S
-          - R66S/R68S # FastRhino R6XS
-          - STATION P2 # Firefly Station P2
-          - T68M # LYT T68M
-          - Orange Pi 5 Plus # Xunlong Orange Pi 5 Plus
-          - Radxa ROCK 5T # Radxa ROCK 5T
-  schedule: # 定时触发
-    - cron: 0 16 * * * # 北京时间 00:00
+permissions: write-all
 
-env: # 全局环境变量
-  REPO_URL: https://github.com/istoreos/istoreos # 上游仓库地址
-  # REPO_BRANCH: main # 备用分支说明
-  # 仓库内的自定义文件入口： # 说明
-  # - armv8/feeds.conf        -> 覆盖 openwrt/feeds.conf # feeds 覆盖
-  # - armv8/.config           -> 覆盖 openwrt/.config # 配置覆盖
-  # - diy-part1-6.x.sh        -> 在 openwrt 源码目录内执行的第一段补丁脚本 # 第一段脚本
-  # - diy-part2-6.x.sh        -> 在 openwrt 源码目录内执行的第二段补丁脚本 # 第二段脚本
-  # - files/                  -> 若存在，会合并到 openwrt/files/ # 文件目录
-  FEEDS_CONF: feeds.conf # feeds 文件名
-  CONFIG_FILE: armv8/.config # 自定义配置文件路径
-  DIY_P1_SH: diy-part1-6.x.sh # 第一段脚本名
-  DIY_P2_SH: diy-part2-6.x.sh # 第二段脚本名
-  UPLOAD_BIN_DIR: true # 是否上传 bin 目录
-  UPLOAD_FIRMWARE: true # 是否上传固件目录
-  UPLOAD_RELEASE: true # 是否自动发布 Release
-  UPLOAD_CONFIG_FILE: true # 是否上传生成的配置文件
-  BUILD_CONFIG_ONLY: ${{ github.event.inputs.config_only }} # 仅生成配置文件开关
-  TARGET_DEVICE: ${{ github.event.inputs.device || 'H66K/H68K/H69K' }} # 目标设备
-  TZ: Asia/Shanghai # 时区
-  GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }} # 发布 token
+on:
+  workflow_dispatch:
+    inputs:
+      BUILD_MODE:
+        description: "编译模式"
+        required: true
+        default: build_firmware
+        type: choice
+        options:
+          - build_firmware
+          - generate_config
+  repository_dispatch:
+  schedule:
+    - cron: '0 17 * * *'
 
-jobs: # 作业定义
-  build: # 编译任务
-    runs-on: ${{ matrix.os }} # 运行系统
-    strategy: # 矩阵策略
-      matrix: # 矩阵参数
-        REPO_BRANCH: # 上游分支
-          # - main # 备用分支
-          - istoreos-24.10 # 默认分支
-          # - istoreos-23.05 # 备用老分支
-        ARCHITECTURE: # 架构
-          - armv8 # RK35xx 目标
-        os: # 系统
-          - ubuntu-22.04 # GitHub Actions Ubuntu
-      fail-fast: false # 某个矩阵失败时继续其他任务
+env:
+  REPO_URL: https://github.com/istoreos/istoreos
+  REPO_BRANCH: istoreos-24.10
+  CONFIG_FILE: armv8/.config
+  FEEDS_FILE: armv8/feeds.conf
+  PACKAGE_CONFIG: configfiles/config_data-6.x.txt
+  DIY_P1_SH: diy-part1.sh
+  DIY_P2_SH: diy-part2.sh
+  WORKDIR: /workdir
+  OPENWRT_DIR: /workdir/istoreos
+  TZ: Asia/Shanghai
 
-    steps: # 步骤列表
-    - name: 合并磁盘 # 扩容磁盘空间
-      uses: easimon/maximize-build-space@master
-      with:
-        swap-size-mb: 1024 # swap 大小
-        temp-reserve-mb: 100 # 临时空间保留
-        root-reserve-mb: 1024 # 根分区保留
+jobs:
+  build:
+    runs-on: ubuntu-22.04
 
-    - name: 准备完成 # 检出仓库
-      uses: actions/checkout@main
+    steps:
+      - name: 检出配置
+        uses: actions/checkout@v4
 
-    - name: 创建工作目录 # 创建构建目录
-      run: |
-        mkdir -p ${GITHUB_WORKSPACE}/workdir # 建目录
-        chmod 755 ${GITHUB_WORKSPACE}/workdir # 设权限
-        echo "WORKDIR_PATH=$PWD" >> $GITHUB_ENV # 记录路径
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ack asciidoc autoconf automake autopoint binutils bison \
+            build-essential bzip2 ccache clang cmake cpio curl \
+            device-tree-compiler flex gawk gettext gcc-multilib \
+            g++-multilib git gperf haveged help2man intltool \
+            lib32gcc-dev libc6-dev-i386 libelf-dev libffi-dev \
+            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev \
+            libmpfr-dev libncurses-dev libncurses5-dev libncursesw5-dev \
+            libreadline-dev libssl-dev libtool make ninja-build \
+            p7zip patch pkg-config python3 python3-dev python3-pip \
+            qemu-utils rsync scons squashfs-tools subversion swig \
+            texinfo unzip upx-ucl uuid-dev wget xsltproc zlib1g-dev
 
-    - name: 检查服务器配置 # 查看机器资源
-      run: |
-        echo "若分配的服务器性能不足，务必及时取消，重新运行！" # 提示
-        echo -e "------------------------------- CPU信息 -------------------------------\n" # 标题
-        echo "CPU物理数量:$(cat /proc/cpuinfo| grep \"physical id\"| sort| uniq| wc -l)" # 物理核数
-        echo -e "CPU核心及版本信息: $(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n" # 型号信息
-        echo -e "------------------------------- 内存信息 -------------------------------\n" # 标题
-        echo "已安装内存详细信息: " # 内存说明
-        sudo lshw -short -C memory | grep GiB # 查看内存
-        echo -e "\n" # 空行
-        echo -e "------------------------------- 磁盘信息 -------------------------------\n" # 标题
-        echo -e "磁盘数量: $(ls /dev/sd* | grep -v [1-9] | wc -l) \n" # 磁盘数量
-        echo "------------------------------- 磁盘详情 -------------------------------\n" # 详情标题
-        df -Th # 磁盘使用情况
+      - name: 检查文件
+        run: |
+          set -e
+          for f in "$CONFIG_FILE" "$FEEDS_FILE" "$PACKAGE_CONFIG" "$DIY_P1_SH" "$DIY_P2_SH"; do
+            test -f "$f"
+          done
 
-    - name: 初始化编译环境 # 安装依赖并清理环境
-      env: # 步骤环境
-        DEBIAN_FRONTEND: noninteractive # 非交互安装
-      run: |
-        echo "------------------------------- 更新并安装依赖 -------------------------------" # 标题
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android /opt/ghc # 清理预装组件
-        sudo -E apt-get -qq update # 更新索引
-        sudo -E apt-get -qq install $(cat $GITHUB_WORKSPACE/depends/${{ matrix.os }}) # 安装依赖
-        wget https://bootstrap.pypa.io/pip/3.6/get-pip.py # 下载 pip 安装脚本
-        sudo python3 get-pip.py # 安装 pip
-        sudo rm -rf get-pip.py # 删除脚本
-        sudo pip install pyelftools # 安装 Python 依赖
-        echo "------------------------------- 清理Docker镜像和软件 -------------------------------" # 标题
-        [ -n "$(docker images -q)" ] && docker rmi $(docker images -q) # 删除镜像
-        docker image prune -a -f # 清理镜像缓存
-        sudo -E apt-get -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* adoptopenjdk* mysql* php* mongodb* dotnet* moby* snapd* android* || true # 清理大包
-        sudo -E apt-get -qq autoremove --purge # 自动清理
-        sudo -E apt-get -qq clean # 清理缓存
-        echo "------------------------------- 设置时区 -------------------------------" # 标题
-        sudo timedatectl set-timezone "$TZ" # 设置时区
+      - name: 克隆 iStoreOS
+        run: |
+          mkdir -p "$WORKDIR"
+          git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$OPENWRT_DIR"
 
-    - name: 克隆源码 # 拉取上游源码
-      working-directory: ${{ env.WORKDIR_PATH }}/workdir
-      run: |
-        df -hT $PWD # 查看空间
-        git clone $REPO_URL -b ${{ matrix.REPO_BRANCH }} openwrt # 克隆源码
-        ln -sf ${{ env.WORKDIR_PATH }}/workdir/openwrt $GITHUB_WORKSPACE/openwrt # 建软链
+      - name: 导入 feeds
+        run: |
+          cp "$GITHUB_WORKSPACE/$FEEDS_FILE" "$OPENWRT_DIR/feeds.conf"
 
-    - name: 缓存构建动作 # 开启缓存
-      uses: klever1988/cachewrtbuild@main
-      with:
-        ccache: 'true' # 开启 ccache
-        mixkey: ${{ matrix.os }}-${{ matrix.ARCHITECTURE }}-${{ matrix.REPO_BRANCH }} # 缓存键
-        prefix: ${{ github.workspace }}/openwrt # 缓存前缀
+      - name: DIY Part 1
+        run: |
+          cd "$OPENWRT_DIR"
+          cp "$GITHUB_WORKSPACE/$DIY_P1_SH" .
+          chmod +x "$DIY_P1_SH"
+          ./"$DIY_P1_SH"
 
-    - name: 加载自定义 feeds # 替换 feeds 文件
-      env:
-        FEEDS_CONF_PATH: ${{ matrix.ARCHITECTURE }}/${{ env.FEEDS_CONF }} # feeds 路径
-      run: |
-        # 读取仓库路径：./armv8/feeds.conf # 来源说明
-        # 写入目标路径：openwrt/feeds.conf # 目标说明
-        [ -e $FEEDS_CONF_PATH ] && mv $FEEDS_CONF_PATH openwrt/$FEEDS_CONF # 覆盖 feeds
-        chmod +x $DIY_P1_SH # 赋予执行权限
-        cd openwrt # 进入源码目录
-        # 执行仓库根目录下的 diy-part1-6.x.sh # 第一段补丁
-        $GITHUB_WORKSPACE/$DIY_P1_SH # 运行脚本
+      - name: 更新 feeds
+        run: |
+          cd "$OPENWRT_DIR"
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-    - name: 更新 feeds # 更新 feeds
-      run: cd openwrt && ./scripts/feeds update -a
+      - name: DIY Part 2
+        run: |
+          cd "$OPENWRT_DIR"
+          cp "$GITHUB_WORKSPACE/$DIY_P2_SH" .
+          chmod +x "$DIY_P2_SH"
+          ./"$DIY_P2_SH"
 
-    - name: 安装 feeds # 安装 feeds
-      run: cd openwrt && ./scripts/feeds install -a
+      - name: 生成最终配置
+        run: |
+          set -e
+          cd "$OPENWRT_DIR"
 
-    - name: 加载自定义配置 # 覆盖 .config
-      run: |
-        # 若仓库根目录存在 ./files/，会合并到 openwrt/files/ # files 说明
-        [ -e files ] && mv files openwrt/files # 合并 files
-        # 只使用仓库路径：./armv8/.config # 来源说明
-        # 复制到目标路径：openwrt/.config # 目标说明
-        if [ ! -s "$GITHUB_WORKSPACE/$CONFIG_FILE" ]; then # 检查配置
-          echo "缺少配置文件: $GITHUB_WORKSPACE/$CONFIG_FILE" # 报错
-          exit 1 # 中止
-        fi
-        cp "$GITHUB_WORKSPACE/$CONFIG_FILE" openwrt/.config # 复制配置
-        case "$TARGET_DEVICE" in # 按设备切换目标
-          "H66K/H68K/H69K") TARGET_KEY="hinlink_opc-h6xk" ;;
-          "H88K") TARGET_KEY="hinlink_h88k" ;;
-          "R5S") TARGET_KEY="friendlyarm_nanopi-r5s" ;;
-          "R6S") TARGET_KEY="friendlyarm_nanopi-r6s" ;;
-          "R66S/R68S") TARGET_KEY="fastrhino_r6xs" ;;
-          "STATION P2") TARGET_KEY="firefly_station-p2" ;;
-          "T68M") TARGET_KEY="lyt_t68m" ;;
-          "Orange Pi 5 Plus") TARGET_KEY="xunlong_orangepi-5-plus" ;;
-          "Radxa ROCK 5T") TARGET_KEY="radxa_rock-5t" ;;
-          *) echo "不支持的设备: $TARGET_DEVICE" ; exit 1 ;;
-        esac # 结束选择
-        sed -i -E "s/^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_[^=]+=.*/# &/" openwrt/.config # 注释旧设备
-        sed -i -E "s/^# CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_${TARGET_KEY} is not set/CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_${TARGET_KEY}=y/" openwrt/.config # 启用新设备
-        grep -q "CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_${TARGET_KEY}=y" openwrt/.config || { echo "切换设备失败: $TARGET_DEVICE"; exit 1; } # 校验结果
-        chmod +x $DIY_P2_SH # 赋予执行权限
-        cd openwrt # 进入源码目录
-        # 执行仓库根目录下的 diy-part2-6.x.sh # 第二段补丁
-        $GITHUB_WORKSPACE/$DIY_P2_SH # 运行脚本
+          cat "$GITHUB_WORKSPACE/$CONFIG_FILE" >> .config
+          cat "$GITHUB_WORKSPACE/$PACKAGE_CONFIG" >> .config
 
-    - name: 仅生成配置文件 # 新功能：只产出最终 .config
-      if: env.BUILD_CONFIG_ONLY == 'true'
-      run: |
-        cd openwrt # 进入源码目录
-        make defconfig # 生成最终配置
-        cp .config config.generated # 另存一份用于上传
+          cat >> .config <<'EOF'
+          CONFIG_DEVEL=y
+          CONFIG_CCACHE=y
+          EOF
 
-    - name: 上传配置文件 # 上传最终配置
-      if: env.BUILD_CONFIG_ONLY == 'true' && env.UPLOAD_CONFIG_FILE == 'true' && !cancelled()
-      uses: actions/upload-artifact@main
-      with:
-        name: OpenWrt_config_${{ matrix.ARCHITECTURE }} # artifact 名称
-        path: openwrt/config.generated # 上传文件
+          make defconfig
 
-    # - name: SSH 连接到 Actions
-      # uses: P3TERX/ssh2actions@main
-      # if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'ssh')
-      # env:
-        # TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        # TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          COUNT=$(grep '^CONFIG_TARGET_DEVICE_rockchip_rk35xx_DEVICE_.*=y$' .config | wc -l)
 
-    - name: 下载软件包 # 下载源码包
-      id: package
-      if: env.BUILD_CONFIG_ONLY != 'true'
-      run: |
-        cd openwrt # 进入源码目录
-        # 读取 openwrt/.config 生成最终依赖图 # 预生成依赖
-        make defconfig # 生成最终配置
-        make download -j8 # 下载源码包
-        find dl -size -1024c -exec ls -l {} \; # 列出异常文件
-        find dl -size -1024c -exec rm -f {} \; # 删除异常文件
+          echo "RK35xx 设备数量：$COUNT"
+          grep '^CONFIG_TARGET_DEVICE_rockchip_rk35xx_DEVICE_' .config || true
 
-    - name: 编译固件 # 开始编译
-      id: compile
-      if: env.BUILD_CONFIG_ONLY != 'true'
-      run: |
-        cd openwrt # 进入源码目录
-        echo -e "$(nproc) thread compile" # 输出线程数
-        make -j$(nproc) || make -j1 || make -j1 V=s # 编译
-        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV # 记录时间戳
-        echo "status=success" >> ${GITHUB_OUTPUT} # 标记成功
+          [ "$COUNT" -eq 1 ] || {
+            echo "ERROR: RK35xx 设备必须且只能选择一个"
+            exit 1
+          }
 
-    - name: 检查磁盘空间 # 查看剩余空间
-      if: (!cancelled())
-      run: df -hT
+          grep -q '^CONFIG_TARGET_DEVICE_rockchip_rk35xx_DEVICE_hinlink_opc-h6xk=y$' .config || {
+            echo "ERROR: 目标不是 Hinlink H6XK"
+            exit 1
+          }
 
-    - name: 上传 bin 文件夹 # 上传 bin 目录
-      uses: actions/upload-artifact@main
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true' && env.BUILD_CONFIG_ONLY != 'true'
-      with:
-        name: OpenWrt_bin${{ env.FILE_DATE }} # artifact 名称
-        path: openwrt/bin # 上传路径
+          cp .config "$GITHUB_WORKSPACE/h6xk-final.config"
 
-    - name: 整理固件文件 # 整理输出目录
-      id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && env.BUILD_CONFIG_ONLY != 'true' && !cancelled()
-      run: |
-        # 固件输出目录：openwrt/bin/targets/*/* # 输出说明
-        cd openwrt/bin/targets/*/* # 进入目录
-        rm -rf packages # 删除 packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV # 记录路径
-        echo "status=success" >> ${GITHUB_OUTPUT} # 标记成功
+          [ ! -f config.buildinfo ] || \
+            cp config.buildinfo "$GITHUB_WORKSPACE/h6xk-config.buildinfo"
 
-    - name: 上传固件目录 # 上传固件目录
-      uses: actions/upload-artifact@main
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      with:
-        name: OpenWrt_firmware${{ env.FILE_DATE }} # artifact 名称
-        path: ${{ env.FIRMWARE }} # 上传路径
+      - name: 上传最终配置
+        uses: actions/upload-artifact@v4
+        with:
+          name: h6xk-final-config
+          path: |
+            h6xk-final.config
+            h6xk-config.buildinfo
+          if-no-files-found: warn
+          retention-days: 30
 
-    - name: 生成发布标签 # 生成 Release 标签
-      id: tag
-      if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true' && !cancelled()
-      run: |
-        echo "release_tag=$(date +"%Y.%m.%d-%H.%M")-${{ matrix.ARCHITECTURE }}" >> ${GITHUB_OUTPUT} # 标签
-        touch release.txt # 创建说明文件
-        echo "
-        💻 架构: ${{ matrix.ARCHITECTURE }}
+      - name: 配置模式结束
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.BUILD_MODE == 'generate_config' }}
+        run: echo "最终 .config 已生成，跳过固件编译"
 
-        📂 源码: ${{ env.REPO_URL }}
+      - name: 编译缓存
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.BUILD_MODE == 'build_firmware' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            /workdir/istoreos/.ccache
+            /workdir/istoreos/staging_dir
+          key: ${{ runner.os }}-h6xk-${{ github.run_id }}
+          restore-keys: ${{ runner.os }}-h6xk-
 
-        🌳 分支: ${{ matrix.REPO_BRANCH }}
+      - name: 下载源码包
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.BUILD_MODE == 'build_firmware' }}
+        run: |
+          cd "$OPENWRT_DIR"
+          make download -j8 V=s
 
-        ⏱️ 编译时间: $(date +"%Y年%m月%d日%H时%M分")
+      - name: 编译
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.BUILD_MODE == 'build_firmware' }}
+        run: |
+          cd "$OPENWRT_DIR"
+          make -j$(nproc) || make -j1 V=s
 
-        🌐 管理地址: 192.168.100.1
+      - name: 整理固件
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.BUILD_MODE == 'build_firmware' }}
+        run: |
+          cd "$OPENWRT_DIR/bin/targets/rockchip/rk35xx"
+          rm -rf packages
+          find . -maxdepth 1 -type f ! -name '*.img.gz' -delete
 
-        👤 用户名: root
+          for f in *.img.gz; do
+            [ -f "$f" ] || continue
+            n="${f#istoreos-}"
+            n="${n#openwrt-}"
+            [ "$f" = "$n" ] || mv "$f" "$n"
+          done
 
-        🔒 密码: password
+          test -n "$(find . -maxdepth 1 -type f -name '*.img.gz' -print -quit)"
 
-        📒 说明: 单网口设备默认网口为LAN，旁路由模式，需要接入主路由器后进后台查找对应IP地址访问，反之双网口设备默认网口为WAN+LAN，主路由模式。 " >> release.txt # 写入说明
-        echo "status=success" >> ${GITHUB_OUTPUT} # 标记成功
+      - name: 上传固件
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.BUILD_MODE == 'build_firmware' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: iStoreOS-H6XK
+          path: /workdir/istoreos/bin/targets/rockchip/rk35xx/*.img.gz
+          if-no-files-found: error
+          retention-days: 30
 
-    - name: 自动发布固件到 Releases # 发布到 Releases
-      uses: softprops/action-gh-release@v2
-      if: steps.tag.outputs.status == 'success' && !cancelled()
-      with:
-        tag_name: ${{ steps.tag.outputs.release_tag }} # 标签名
-        body_path: release.txt # 说明文件
-        files: ${{ env.FIRMWARE }}/* # 发布文件
-
-    - name: 删除运行记录 # 清理 workflow 记录
-      uses: xiaomeng9597/delete-workflow-runs@main
-      with:
-        retain_days: 20 # 保留天数
-        keep_minimum_runs: 15 # 最少保留数
-        token: ${{ env.GITHUB_TOKEN }} # token
-
-    - name: 删除自动发布的旧固件 # 清理旧 Release
-      uses: dev-drprasad/delete-older-releases@v0.3.3
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
-      with:
-        keep_latest: 60 # 保留最新数量
-        delete_tags: true # 同步删除标签
+      - name: 发布 Release
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.BUILD_MODE == 'build_firmware' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: iStoreOS-H6XK-${{ github.run_number }}
+          name: iStoreOS H6XK ${{ github.run_number }}
+          body: |
+            Target: hinlink_opc-h6xk
+            Branch: istoreos-24.10
+          files: /workdir/istoreos/bin/targets/rockchip/rk35xx/*.img.gz
