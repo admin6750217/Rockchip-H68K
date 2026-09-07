@@ -18,8 +18,8 @@ permissions:
 env:
   REPO_URL: https://github.com/openwrt/openwrt
   REPO_BRANCH: main
-  CONFIG_FILE: armv8/openert.config
-  FEEDS_FILE: armv8/openwt-feeds.conf
+  CONFIG_FILE: armv8/openwrt.config
+  FEEDS_FILE: armv8/openwrt-feeds.conf
   PACKAGE_CONFIG: configfiles/config_data-6.x.txt
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
