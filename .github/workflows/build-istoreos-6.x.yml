@@ -7,11 +7,28 @@ on: # 触发条件
       ssh: # SSH 调试开关
         description: 'SSH connection to Actions' # 输入说明
         required: false # 非必填
+        type: boolean # 复选框
         default: 'false' # 默认关闭
       config_only: # 仅生成配置文件开关
         description: 'Only generate final .config file' # 输入说明
         required: false # 非必填
-        default: 'false' # 默认关闭
+        type: boolean # 复选框
+        default: false # 默认关闭
+      device: # 设备选择
+        description: 'Target device' # 输入说明
+        required: false # 非必填
+        type: choice # 下拉框
+        default: H66K/H68K/H69K # 默认设备
+        options: # 设备列表
+          - H66K/H68K/H69K # 友善千兆/2.5G 设备组
+          - H88K # 另一款 Hinlink 设备
+          - R5S # NanoPi R5S
+          - R6S # NanoPi R6S
+          - R66S/R68S # FastRhino R6XS
+          - STATION P2 # Firefly Station P2
+          - T68M # LYT T68M
+          - Orange Pi 5 Plus # Xunlong Orange Pi 5 Plus
+          - Radxa ROCK 5T # Radxa ROCK 5T
   schedule: # 定时触发
     - cron: 0 16 * * * # 北京时间 00:00
 
@@ -32,7 +49,8 @@ env: # 全局环境变量
   UPLOAD_FIRMWARE: true # 是否上传固件目录
   UPLOAD_RELEASE: true # 是否自动发布 Release
   UPLOAD_CONFIG_FILE: true # 是否上传生成的配置文件
-  BUILD_CONFIG_ONLY: ${{ github.event.inputs.config_only || 'false' }} # 仅生成配置文件开关
+  BUILD_CONFIG_ONLY: ${{ github.event.inputs.config_only }} # 仅生成配置文件开关
+  TARGET_DEVICE: ${{ github.event.inputs.device || 'H66K/H68K/H69K' }} # 目标设备
   TZ: Asia/Shanghai # 时区
   GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }} # 发布 token
 
@@ -147,6 +165,21 @@ jobs: # 作业定义
           exit 1 # 中止
         fi
         cp "$GITHUB_WORKSPACE/$CONFIG_FILE" openwrt/.config # 复制配置
+        case "$TARGET_DEVICE" in # 按设备切换目标
+          "H66K/H68K/H69K") TARGET_KEY="hinlink_opc-h6xk" ;;
+          "H88K") TARGET_KEY="hinlink_h88k" ;;
+          "R5S") TARGET_KEY="friendlyarm_nanopi-r5s" ;;
+          "R6S") TARGET_KEY="friendlyarm_nanopi-r6s" ;;
+          "R66S/R68S") TARGET_KEY="fastrhino_r6xs" ;;
+          "STATION P2") TARGET_KEY="firefly_station-p2" ;;
+          "T68M") TARGET_KEY="lyt_t68m" ;;
+          "Orange Pi 5 Plus") TARGET_KEY="xunlong_orangepi-5-plus" ;;
+          "Radxa ROCK 5T") TARGET_KEY="radxa_rock-5t" ;;
+          *) echo "不支持的设备: $TARGET_DEVICE" ; exit 1 ;;
+        esac # 结束选择
+        sed -i -E "s/^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_[^=]+=.*/# &/" openwrt/.config # 注释旧设备
+        sed -i -E "s/^# CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_${TARGET_KEY} is not set/CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_${TARGET_KEY}=y/" openwrt/.config # 启用新设备
+        grep -q "CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_${TARGET_KEY}=y" openwrt/.config || { echo "切换设备失败: $TARGET_DEVICE"; exit 1; } # 校验结果
         chmod +x $DIY_P2_SH # 赋予执行权限
         cd openwrt # 进入源码目录
         # 执行仓库根目录下的 diy-part2-6.x.sh # 第二段补丁
