@@ -34,12 +34,6 @@
 | Orange-Pi-5-Plus     | istoreos-rockchip-armv8-xunlong_orangepi-5-plus-squashfs-sysupgrade.img.gz     |
 | Radxa ROCK 5T     | istoreos-rockchip-armv8-radxa_rock-5t-squashfs-sysupgrade.img.gz     |
 
-### x86 架构
-
-| 启动       | 包名称                                              |
-| ---------- | --------------------------------------------------- |
-| X86-64     | istoreos-x86-64-generic-squashfs-combined.img.gz    |
-| X86-64-EFI | storeos-x86-64-generic-squashfs-combined-efi.img.gz |
 
 ## 鸣谢
 
