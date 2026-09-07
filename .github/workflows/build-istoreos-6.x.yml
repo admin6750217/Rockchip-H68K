@@ -34,6 +34,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-22.04
+
     steps:
 
     - name: 合并磁盘
@@ -49,13 +50,79 @@ jobs:
     - name: 检出配置文件
       uses: actions/checkout@v4
 
+    - name: 清理系统磁盘空间
+      shell: bash
+      run: |
+        set +e
+
+        echo "=============================================================================="
+        echo "清理 CI Runner 磁盘空间"
+        echo "=============================================================================="
+
+        echo "========== 当前磁盘 =========="
+        df -hT
+
+        echo "========== 最大安装包 =========="
+        dpkg-query -Wf '${Installed-Size}\t${Package}\n' 2>/dev/null \
+          | sort -n \
+          | tail -n 100 || true
+
+        echo "========== 清理大型软件包 =========="
+
+        sudo apt-get -y purge firefox || true
+        sudo apt-get remove -y '^dotnet-.*' || true
+        sudo apt-get remove -y '^llvm-.*' || true
+        sudo apt-get remove -y 'php.*' || true
+        sudo apt-get remove -y '^mongodb-.*' || true
+        sudo apt-get remove -y '^mysql-.*' || true
+
+        sudo apt-get remove -y \
+          azure-cli \
+          google-cloud-sdk \
+          hhvm \
+          google-chrome-stable \
+          firefox \
+          powershell \
+          mono-devel || true
+
+        echo "========== 自动清理依赖 =========="
+
+        sudo apt-get autoremove --purge -y || true
+        sudo apt-get autoclean -y || true
+        sudo apt-get clean || true
+
+        echo "========== 删除大型目录 =========="
+
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/graalvm
+        sudo rm -rf /usr/local/.ghcup
+        sudo rm -rf /usr/local/share/powershell
+        sudo rm -rf /usr/local/share/chromium
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /usr/local/lib/node_modules
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+
+        echo "========== 清理 Docker =========="
+
+        docker system prune -af --volumes || true
+
+        echo "========== 删除 GitHub Actions 工具缓存 =========="
+
+        sudo rm -rf /opt/hostedtoolcache
+
+        echo "========== 清理完成 =========="
+        df -hT
+
     - name: 检查服务器配置
       run: |
         echo "========== CPU =========="
         nproc
         lscpu | grep -E 'Model name|CPU\(s\)' || true
+
         echo "========== 内存 =========="
         free -h
+
         echo "========== 磁盘 =========="
         df -hT
 
@@ -192,6 +259,7 @@ jobs:
       working-directory: ${{ env.OPENWRT_DIR }}
       run: |
         echo "========== make defconfig =========="
+
         make defconfig
 
         echo "========== 检查目标设备 =========="
@@ -204,13 +272,16 @@ jobs:
 
         if [ "$COUNT" -ne 1 ]; then
           echo "ERROR: Rockchip ARM64 目标设备不是唯一设备"
+
           grep \
             '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$' \
             .config || true
+
           exit 1
         fi
 
         echo "========== 最终 .config =========="
+
         grep '^CONFIG_TARGET_' .config | head -50
 
         cp .config "$GITHUB_WORKSPACE/final.config"
@@ -230,6 +301,7 @@ jobs:
           ${{ env.OPENWRT_DIR }}/.config
           ${{ env.OPENWRT_DIR }}/feeds.conf
           ${{ env.PACKAGE_CONFIG }}
+        retention-days: 30
 
     - name: 缓存编译
       uses: klever1988/cachewrtbuild@main
@@ -294,6 +366,7 @@ jobs:
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
       run: |
         cd "$OPENWRT_DIR/bin/targets/"*/*
+
         rm -rf packages
 
         echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
