@@ -1,0 +1,358 @@
+name: Build openwrt OS
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+    inputs:
+      build_firmware:
+        description: '是否编译固件'
+        required: true
+        default: 'true'
+        type: boolean
+  schedule:
+    - cron: '0 17 * * *'
+
+permissions:
+  contents: write
+
+env:
+  REPO_URL: https://github.com/istoreos/istoreos
+  REPO_BRANCH: istoreos-24.10
+  CONFIG_FILE: armv8/.config
+  FEEDS_FILE: armv8/feeds.conf
+  PACKAGE_CONFIG: configfiles/config_data-6.x.txt
+  DIY_P1_SH: diy-part1.sh
+  DIY_P2_SH: diy-part2.sh
+  WORKDIR: /workdir
+  OPENWRT_DIR: /workdir/istoreos
+  UPLOAD_BIN_DIR: true
+  UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
+  TZ: Asia/Shanghai
+  GITHUB_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+
+    - name: 合并磁盘
+      uses: easimon/maximize-build-space@master
+      with:
+        swap-size-mb: 2048
+        temp-reserve-mb: 100
+        root-reserve-mb: 2048
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+
+    - name: 检出配置文件
+      uses: actions/checkout@v4
+
+    - name: 检查服务器配置
+      run: |
+        echo "========== CPU =========="
+        nproc
+        lscpu | grep -E 'Model name|CPU\(s\)' || true
+        echo "========== 内存 =========="
+        free -h
+        echo "========== 磁盘 =========="
+        df -hT
+
+    - name: 初始化编译环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        echo "========== 安装编译依赖 =========="
+
+        sudo rm -rf \
+          /etc/apt/sources.list.d/* \
+          /usr/share/dotnet \
+          /etc/mysql \
+          /etc/php \
+          /usr/local/lib/android \
+          /opt/ghc
+
+        sudo apt-get update
+
+        sudo apt-get install -y \
+          build-essential \
+          p7zip \
+          patch \
+          pkg-config \
+          python3 \
+          python3-dev \
+          python3-pip \
+          qemu-utils \
+          rsync \
+          scons \
+          squashfs-tools \
+          subversion \
+          swig \
+          texinfo \
+          unzip \
+          upx-ucl \
+          uuid-dev \
+          wget \
+          xsltproc \
+          zlib1g-dev
+
+        sudo pip3 install --upgrade pip
+        sudo pip3 install pyelftools
+
+        sudo timedatectl set-timezone "$TZ"
+
+    - name: 创建工作目录
+      run: |
+        sudo mkdir -p "$WORKDIR"
+        sudo chown -R "$USER:$USER" "$WORKDIR"
+        echo "WORKDIR_PATH=$WORKDIR" >> "$GITHUB_ENV"
+
+    - name: 克隆源码
+      working-directory: ${{ env.WORKDIR }}
+      run: |
+        git clone --depth=1 \
+          "$REPO_URL" \
+          -b "$REPO_BRANCH" \
+          istoreos
+
+        echo "源码目录：$WORKDIR/istoreos"
+
+    - name: 检查配置文件
+      run: |
+        echo "========== 检查自定义文件 =========="
+
+        test -f "$CONFIG_FILE" || {
+          echo "ERROR: 找不到 $CONFIG_FILE"
+          exit 1
+        }
+
+        test -f "$FEEDS_FILE" || {
+          echo "ERROR: 找不到 $FEEDS_FILE"
+          exit 1
+        }
+
+        test -f "$PACKAGE_CONFIG" || {
+          echo "ERROR: 找不到 $PACKAGE_CONFIG"
+          exit 1
+        }
+
+        test -f "$DIY_P1_SH" || {
+          echo "ERROR: 找不到 $DIY_P1_SH"
+          exit 1
+        }
+
+        test -f "$DIY_P2_SH" || {
+          echo "ERROR: 找不到 $DIY_P2_SH"
+          exit 1
+        }
+
+        echo "配置文件检查通过"
+
+    - name: 加载 feeds
+      run: |
+        cp "$FEEDS_FILE" "$OPENWRT_DIR/feeds.conf"
+        echo "feeds.conf 已加载"
+
+    - name: 执行 DIY Part 1
+      run: |
+        chmod +x "$DIY_P1_SH"
+        cd "$OPENWRT_DIR"
+        "$GITHUB_WORKSPACE/$DIY_P1_SH"
+
+    - name: 更新 feeds
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        ./scripts/feeds update -a
+
+    - name: 安装 feeds
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        ./scripts/feeds install -a
+
+    - name: 加载配置
+      run: |
+        cp "$CONFIG_FILE" "$OPENWRT_DIR/.config"
+
+        mkdir -p "$OPENWRT_DIR/configfiles"
+
+        cp "$PACKAGE_CONFIG" \
+          "$OPENWRT_DIR/configfiles/config_data-6.x.txt"
+
+        echo "主配置已加载：$OPENWRT_DIR/.config"
+        echo "插件配置已加载"
+
+    - name: 执行 DIY Part 2
+      run: |
+        chmod +x "$DIY_P2_SH"
+        cd "$OPENWRT_DIR"
+        "$GITHUB_WORKSPACE/$DIY_P2_SH"
+
+    - name: 生成最终配置
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        echo "========== make defconfig =========="
+        make defconfig
+
+        echo "========== 检查目标设备 =========="
+
+        COUNT=$(grep \
+          '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$' \
+          .config | wc -l)
+
+        echo "检测到 Rockchip ARM64 设备数量：$COUNT"
+
+        if [ "$COUNT" -ne 1 ]; then
+          echo "ERROR: Rockchip ARM64 目标设备不是唯一设备"
+          grep \
+            '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$' \
+            .config || true
+          exit 1
+        fi
+
+        echo "========== 最终 .config =========="
+        grep '^CONFIG_TARGET_' .config | head -50
+
+        cp .config "$GITHUB_WORKSPACE/final.config"
+
+    - name: 上传最终 .config
+      uses: actions/upload-artifact@v4
+      with:
+        name: final-config
+        path: final.config
+        retention-days: 30
+
+    - name: 上传配置文件
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-config
+        path: |
+          ${{ env.OPENWRT_DIR }}/.config
+          ${{ env.OPENWRT_DIR }}/feeds.conf
+          ${{ env.PACKAGE_CONFIG }}
+
+    - name: 缓存编译
+      uses: klever1988/cachewrtbuild@main
+      with:
+        ccache: 'true'
+        mixkey: istoreos-${{ env.REPO_BRANCH }}-armv8
+        prefix: ${{ env.OPENWRT_DIR }}
+
+    - name: 下载软件包
+      if: ${{ inputs.build_firmware != 'false' }}
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+
+    - name: 编译固件
+      id: compile
+      if: ${{ inputs.build_firmware != 'false' }}
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        echo "========== 开始编译 =========="
+        echo "CPU线程：$(nproc)"
+
+        make -j"$(nproc)" || \
+        make -j1 || \
+        make -j1 V=s
+
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> "$GITHUB_ENV"
+        echo "status=success" >> "$GITHUB_OUTPUT"
+
+    - name: 检查编译结果
+      if: steps.compile.outputs.status == 'success'
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        echo "========== 编译结果 =========="
+        find bin/targets -type f | sort
+
+    - name: 查找 KO 驱动
+      if: steps.compile.outputs.status == 'success'
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        echo "========== KO 驱动 =========="
+        find . -type f -name "*.ko" | head -200
+
+    - name: 检查磁盘空间
+      if: always()
+      run: |
+        echo "========== 磁盘空间 =========="
+        df -hT
+
+    - name: 上传 bin 文件夹
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpenWrt_bin${{ env.FILE_DATE }}
+        path: ${{ env.OPENWRT_DIR }}/bin
+        retention-days: 30
+
+    - name: 整理固件
+      id: organize
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
+      run: |
+        cd "$OPENWRT_DIR/bin/targets/"*/*
+        rm -rf packages
+
+        echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
+        echo "status=success" >> "$GITHUB_OUTPUT"
+
+        echo "========== 固件 =========="
+        ls -lh
+
+    - name: 上传固件目录
+      if: steps.organize.outputs.status == 'success'
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpenWrt_firmware${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}
+        retention-days: 30
+
+    - name: 生成发布信息
+      id: tag
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+      run: |
+        TAG="$(date +"%Y.%m.%d-%H.%M")-armv8"
+
+        echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
+
+        cat > release.txt <<EOF
+        ## iStoreOS 6.x
+
+        - 架构：armv8
+        - 源码：$REPO_URL
+        - 分支：$REPO_BRANCH
+        - 编译时间：$(date +"%Y-%m-%d %H:%M")
+        - 管理地址：192.168.100.1
+        - 用户名：root
+        - 密码：password
+
+        本版本为 Rockchip ARM64 / Hinlink H68K 云编译版本。
+        EOF
+
+        echo "status=success" >> "$GITHUB_OUTPUT"
+
+    - name: 发布固件
+      uses: softprops/action-gh-release@v2
+      if: steps.tag.outputs.status == 'success'
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: ${{ env.FIRMWARE }}/*
+
+    - name: 删除旧 Workflow
+      uses: xiaomeng9597/delete-workflow-runs@main
+      if: always()
+      with:
+        retain_days: 20
+        keep_minimum_runs: 15
+        token: ${{ env.GITHUB_TOKEN }}
+
+    - name: 删除旧 Releases
+      uses: dev-drprasad/delete-older-releases@v0.3.3
+      if: env.UPLOAD_RELEASE == 'true'
+      with:
+        keep_latest: 60
+        delete_tags: true
