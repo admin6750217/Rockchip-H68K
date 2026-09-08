@@ -39,7 +39,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 360
 
     steps:
@@ -65,11 +65,15 @@ jobs:
           sudo rm -rf /opt/hostedtoolcache
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
+
+          echo "===== 磁盘空间 ====="
           df -hT
+          df -ih
 
       - name: 安装编译依赖
         run: |
           sudo apt-get update
+
           sudo apt-get install -y \
             build-essential \
             clang \
@@ -101,6 +105,7 @@ jobs:
             quilt \
             libelf-dev \
             ccache
+
           sudo apt-get clean
 
       - name: 准备编译目录
@@ -126,7 +131,13 @@ jobs:
             "$OPENWRT_DIR"
 
           cd "$OPENWRT_DIR"
+
           git log -1 --oneline
+
+          echo "===== 实际编译目录 ====="
+          readlink -f "$OPENWRT_DIR"
+          df -hT "$OPENWRT_DIR"
+          df -ih "$OPENWRT_DIR"
 
       - name: 配置 feeds
         run: |
@@ -182,6 +193,8 @@ jobs:
 
           COUNT=$(grep '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$' .config | wc -l)
 
+          echo "检测到 Rockchip ARM64 设备数量：$COUNT"
+
           if [ "$COUNT" -ne 1 ]; then
             echo "ERROR: Rockchip ARM64 目标设备不是唯一设备"
             exit 1
@@ -192,6 +205,7 @@ jobs:
         with:
           name: final-config
           path: ${{ env.OPENWRT_DIR }}/.config
+          retention-days: 7
 
       - name: 编译缓存
         uses: klever1988/cachewrtbuild@main
@@ -215,10 +229,18 @@ jobs:
           df -hT "$GITHUB_WORKSPACE"
           df -ih "$GITHUB_WORKSPACE"
 
+          echo "===== 根分区 ====="
+          df -hT /
+          df -ih /
+
       - name: 下载源码包
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_firmware }}
         run: |
           cd "$OPENWRT_DIR"
+
           make download -j8
+
+          find dl -type f -size -1024c -print -delete || true
 
       - name: 编译固件
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_firmware }}
@@ -227,10 +249,11 @@ jobs:
 
           echo "===== 开始编译 ====="
           echo "CPU: $(nproc)"
-          echo "内存:"
+          echo "===== 内存 ====="
           free -h
-          echo "磁盘:"
+          echo "===== 磁盘 ====="
           df -hT .
+          df -ih .
 
           make -j"$(nproc)"
 
@@ -240,18 +263,23 @@ jobs:
           cd "$OPENWRT_DIR"
 
           echo "===== 多线程编译失败，开始单线程详细编译 ====="
+
           make -j1 V=s
 
       - name: 编译后检查磁盘
         if: always()
         run: |
-          echo "===== 编译后磁盘 ====="
+          echo "===== /workdir ====="
           df -hT "$WORKDIR"
           df -ih "$WORKDIR"
 
           echo "===== Workspace ====="
           df -hT "$GITHUB_WORKSPACE"
           df -ih "$GITHUB_WORKSPACE"
+
+          echo "===== 根分区 ====="
+          df -hT /
+          df -ih /
 
       - name: 整理固件
         if: ${{ success() && (github.event_name != 'workflow_dispatch' || inputs.build_firmware) }}
@@ -279,6 +307,7 @@ jobs:
         with:
           name: iStoreOS-6.x-bin
           path: ${{ env.OPENWRT_DIR }}/bin/targets/
+          retention-days: 7
 
       - name: 上传固件
         if: ${{ success() && env.UPLOAD_FIRMWARE == 'true' && (github.event_name != 'workflow_dispatch' || inputs.build_firmware) }}
@@ -289,6 +318,7 @@ jobs:
             ${{ env.FIRMWARE }}/*.img.gz
             ${{ env.FIRMWARE }}/sha256sums
           if-no-files-found: error
+          retention-days: 7
 
       - name: 发布 Release
         if: ${{ success() && env.UPLOAD_RELEASE == 'true' && (github.event_name != 'workflow_dispatch' || inputs.build_firmware) }}
