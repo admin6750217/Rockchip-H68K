@@ -2,6 +2,7 @@ name: Build iStore OS 6.x
 
 on:
   repository_dispatch:
+
   workflow_dispatch:
     inputs:
       build_firmware:
@@ -9,7 +10,9 @@ on:
         required: true
         default: true
         type: boolean
+
   schedule:
+    # UTC 17:00 = 北京/新加坡时间凌晨 01:00
     - cron: '0 17 * * *'
 
 permissions:
@@ -43,335 +46,668 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: 合并磁盘
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: 1024
-          swap-size-mb: 4096
-          remove-dotnet: true
-          remove-android: true
-          remove-haskell: true
-          remove-codeql: true
 
-      - name: 检出配置文件
-        uses: actions/checkout@v4
+    - name: 合并磁盘
+      uses: easimon/maximize-build-space@master
+      with:
+        swap-size-mb: 1024
+        temp-reserve-mb: 100
+        root-reserve-mb: 1024
+        remove-dotnet: 'true'
+        remove-android: 'true'
+        remove-haskell: 'true'
+        remove-codeql: 'true'
 
-      - name: 清理系统空间
-        run: |
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/.ghcup
-          sudo rm -rf /opt/hostedtoolcache
-          sudo apt-get clean
-          sudo rm -rf /var/lib/apt/lists/*
+    - name: 检出配置文件
+      uses: actions/checkout@v4
 
-          echo "===== 磁盘空间 ====="
-          df -hT
-          df -ih
+    - name: 清理 CI 环境
+      shell: bash
+      run: |
+        set +e
 
-      - name: 安装编译依赖
-        run: |
-          sudo apt-get update
+        echo "=============================================================================="
+        echo "清理 GitHub Actions Runner 磁盘空间"
+        echo "=============================================================================="
 
-          sudo apt-get install -y \
-            build-essential \
-            clang \
-            flex \
-            bison \
-            gawk \
-            gcc-multilib \
-            g++-multilib \
-            gettext \
-            git \
-            libncurses5-dev \
-            libncursesw5-dev \
-            libssl-dev \
-            python3 \
-            python3-distutils \
-            python3-pip \
-            python3-setuptools \
-            rsync \
-            unzip \
-            zlib1g-dev \
-            file \
-            wget \
-            curl \
-            jq \
-            time \
-            xsltproc \
-            swig \
-            gettext-base \
-            quilt \
-            libelf-dev \
-            ccache
+        echo "========== 当前磁盘空间 =========="
+        df -hT
+        df -ih
 
-          sudo apt-get clean
+        echo "========== 最大的软件包 =========="
 
-      - name: 准备编译目录
-        run: |
-          sudo mkdir -p "$WORKDIR"
-          sudo chown -R "$USER:$USER" "$WORKDIR"
-          rm -rf "$OPENWRT_DIR"
+        dpkg-query -Wf '${Installed-Size}\t${Package}\n' 2>/dev/null \
+          | sort -n \
+          | tail -n 100 || true
 
-          echo "===== /workdir ====="
-          df -hT "$WORKDIR"
-          df -ih "$WORKDIR"
+        echo "========== 删除大型软件包 =========="
 
-          echo "===== Workspace ====="
-          df -hT "$GITHUB_WORKSPACE"
-          df -ih "$GITHUB_WORKSPACE"
+        sudo apt-get -y purge firefox || true
 
-      - name: 下载 iStoreOS
-        run: |
-          git clone \
-            --depth=1 \
-            --branch "$REPO_BRANCH" \
-            "$REPO_URL" \
-            "$OPENWRT_DIR"
+        sudo apt-get remove -y '^dotnet-.*' || true
+        sudo apt-get remove -y '^llvm-.*' || true
+        sudo apt-get remove -y 'php.*' || true
+        sudo apt-get remove -y '^mongodb-.*' || true
+        sudo apt-get remove -y '^mysql-.*' || true
 
-          cd "$OPENWRT_DIR"
+        sudo apt-get remove -y \
+          azure-cli \
+          google-cloud-sdk \
+          hhvm \
+          google-chrome-stable \
+          powershell \
+          mono-devel || true
 
-          git log -1 --oneline
+        echo "========== 清理 APT =========="
 
-          echo "===== 实际编译目录 ====="
-          readlink -f "$OPENWRT_DIR"
-          df -hT "$OPENWRT_DIR"
-          df -ih "$OPENWRT_DIR"
+        sudo apt-get autoremove --purge -y || true
+        sudo apt-get autoclean -y || true
+        sudo apt-get clean || true
 
-      - name: 配置 feeds
-        run: |
-          cd "$OPENWRT_DIR"
+        echo "========== 删除大型目录 =========="
 
-          test -f "$GITHUB_WORKSPACE/$FEEDS_FILE"
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /usr/local/graalvm
+        sudo rm -rf /usr/local/.ghcup
+        sudo rm -rf /usr/local/share/powershell
+        sudo rm -rf /usr/local/share/chromium
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /usr/local/lib/node_modules
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+        sudo rm -rf /opt/hostedtoolcache
 
-          cp "$GITHUB_WORKSPACE/$FEEDS_FILE" feeds.conf
+        echo "========== 清理 Docker =========="
 
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+        docker system prune -af --volumes || true
 
-      - name: 加载配置文件
-        run: |
-          cd "$OPENWRT_DIR"
+        echo "========== 清理完成 =========="
 
-          test -f "$GITHUB_WORKSPACE/$CONFIG_FILE"
+        df -hT
+        df -ih
 
-          cp "$GITHUB_WORKSPACE/$CONFIG_FILE" .config
+    - name: 检查服务器配置
+      run: |
+        echo "========== CPU =========="
 
-          if [ -f "$GITHUB_WORKSPACE/$PACKAGE_CONFIG" ]; then
-            cat "$GITHUB_WORKSPACE/$PACKAGE_CONFIG" >> .config
+        nproc
+
+        lscpu | grep -E 'Model name|CPU\(s\)' || true
+
+        echo "========== 内存 =========="
+
+        free -h
+
+        echo "========== 磁盘 =========="
+
+        df -hT
+        df -ih
+
+    - name: 初始化编译环境
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        echo "========== 安装编译依赖 =========="
+
+        sudo apt-get update
+
+        sudo apt-get install -y \
+          build-essential \
+          clang \
+          flex \
+          bison \
+          gawk \
+          gcc-multilib \
+          g++-multilib \
+          gettext \
+          git \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libssl-dev \
+          python3 \
+          python3-dev \
+          python3-distutils \
+          python3-pip \
+          python3-setuptools \
+          qemu-utils \
+          rsync \
+          unzip \
+          zlib1g-dev \
+          file \
+          wget \
+          curl \
+          jq \
+          time \
+          xsltproc \
+          swig \
+          gettext-base \
+          quilt \
+          libelf-dev \
+          ccache \
+          pkg-config \
+          patch \
+          subversion \
+          squashfs-tools \
+          uuid-dev \
+          scons \
+          texinfo
+
+        sudo pip3 install --upgrade pip
+        sudo pip3 install pyelftools
+
+        sudo timedatectl set-timezone "$TZ"
+
+        sudo apt-get clean
+
+        echo "========== 编译环境完成 =========="
+
+    - name: 创建工作目录
+      run: |
+        sudo mkdir -p "$WORKDIR"
+        sudo chown -R "$USER:$USER" "$WORKDIR"
+
+        echo "WORKDIR_PATH=$WORKDIR" >> "$GITHUB_ENV"
+
+        echo "========== 工作目录 =========="
+
+        echo "$WORKDIR"
+
+        df -hT "$WORKDIR"
+        df -ih "$WORKDIR"
+
+    - name: 克隆 iStoreOS
+      working-directory: ${{ env.WORKDIR }}
+      run: |
+        echo "========== 克隆 iStoreOS =========="
+
+        git clone \
+          --depth=1 \
+          --branch "$REPO_BRANCH" \
+          "$REPO_URL" \
+          istoreos
+
+        echo "========== 源码信息 =========="
+
+        cd "$OPENWRT_DIR"
+
+        git log -1 --oneline
+
+        echo "源码目录："
+        readlink -f "$OPENWRT_DIR"
+
+        echo "========== 源码磁盘 =========="
+
+        df -hT "$OPENWRT_DIR"
+        df -ih "$OPENWRT_DIR"
+
+    - name: 检查配置文件
+      run: |
+        echo "========== 检查自定义文件 =========="
+
+        test -f "$CONFIG_FILE" || {
+          echo "ERROR: 找不到 $CONFIG_FILE"
+          exit 1
+        }
+
+        test -f "$FEEDS_FILE" || {
+          echo "ERROR: 找不到 $FEEDS_FILE"
+          exit 1
+        }
+
+        test -f "$PACKAGE_CONFIG" || {
+          echo "ERROR: 找不到 $PACKAGE_CONFIG"
+          exit 1
+        }
+
+        test -f "$DIY_P1_SH" || {
+          echo "ERROR: 找不到 $DIY_P1_SH"
+          exit 1
+        }
+
+        test -f "$DIY_P2_SH" || {
+          echo "ERROR: 找不到 $DIY_P2_SH"
+          exit 1
+        }
+
+        echo "=========================================="
+        echo "所有配置文件检查通过"
+        echo "=========================================="
+
+    - name: 加载 feeds
+      run: |
+        echo "========== 加载 feeds.conf =========="
+
+        cp "$FEEDS_FILE" "$OPENWRT_DIR/feeds.conf"
+
+        echo "========== 当前 feeds.conf =========="
+
+        cat "$OPENWRT_DIR/feeds.conf"
+
+    - name: 执行 DIY Part 1
+      shell: bash
+      run: |
+        echo "========== 执行 DIY Part 1 =========="
+
+        chmod +x "$DIY_P1_SH"
+
+        cd "$OPENWRT_DIR"
+
+        "$GITHUB_WORKSPACE/$DIY_P1_SH"
+
+    - name: 更新 feeds
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        echo "========== 更新 feeds =========="
+
+        ./scripts/feeds update -a
+
+    - name: 安装 feeds
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        echo "========== 安装 feeds =========="
+
+        ./scripts/feeds install -a
+
+    - name: 加载配置
+      run: |
+        echo "========== 加载主配置 =========="
+
+        cp "$CONFIG_FILE" "$OPENWRT_DIR/.config"
+
+        mkdir -p "$OPENWRT_DIR/configfiles"
+
+        cp "$PACKAGE_CONFIG" \
+          "$OPENWRT_DIR/configfiles/config_data-6.x.txt"
+
+        echo "主配置："
+        echo "$OPENWRT_DIR/.config"
+
+        echo "插件配置："
+        echo "$OPENWRT_DIR/configfiles/config_data-6.x.txt"
+
+    - name: 执行 DIY Part 2
+      shell: bash
+      run: |
+        echo "========== 执行 DIY Part 2 =========="
+
+        chmod +x "$DIY_P2_SH"
+
+        cd "$OPENWRT_DIR"
+
+        "$GITHUB_WORKSPACE/$DIY_P2_SH"
+
+    - name: 生成最终配置
+      working-directory: ${{ env.OPENWRT_DIR }}
+      shell: bash
+      run: |
+        echo "=========================================="
+        echo "生成最终 .config"
+        echo "=========================================="
+
+        make defconfig
+
+        echo "========== 检查目标设备 =========="
+
+        COUNT=$(grep \
+          '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$' \
+          .config | wc -l)
+
+        echo "检测到 Rockchip ARM64 设备数量：$COUNT"
+
+        if [ "$COUNT" -ne 1 ]; then
+
+          echo "ERROR: Rockchip ARM64 目标设备不是唯一设备"
+
+          grep \
+            '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$' \
+            .config || true
+
+          exit 1
+
+        fi
+
+        echo "========== 目标设备 =========="
+
+        grep \
+          '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$' \
+          .config
+
+        echo "========== Target 配置 =========="
+
+        grep '^CONFIG_TARGET_' .config | head -100 || true
+
+        cp .config "$GITHUB_WORKSPACE/final.config"
+
+    - name: 上传最终 .config
+      uses: actions/upload-artifact@v4
+      with:
+        name: final-config
+        path: final.config
+        retention-days: 30
+
+    - name: 上传配置文件
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-config
+        path: |
+          ${{ env.OPENWRT_DIR }}/.config
+          ${{ env.OPENWRT_DIR }}/feeds.conf
+          ${{ env.PACKAGE_CONFIG }}
+        retention-days: 30
+
+    - name: 缓存编译
+      uses: klever1988/cachewrtbuild@main
+      with:
+        ccache: 'true'
+        toolchain: 'true'
+        mixkey: istoreos-${{ env.REPO_BRANCH }}-armv8
+        prefix: ${{ env.OPENWRT_DIR }}
+
+    - name: 编译前检查磁盘
+      run: |
+        echo "========== /workdir =========="
+
+        df -hT "$WORKDIR"
+        df -ih "$WORKDIR"
+
+        echo "========== iStoreOS =========="
+
+        df -hT "$OPENWRT_DIR"
+        df -ih "$OPENWRT_DIR"
+
+        echo "========== Workspace =========="
+
+        df -hT "$GITHUB_WORKSPACE"
+        df -ih "$GITHUB_WORKSPACE"
+
+        echo "========== 根分区 =========="
+
+        df -hT /
+        df -ih /
+
+        echo "========== 内存 =========="
+
+        free -h
+
+    - name: 下载软件包
+      if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_firmware }}
+      working-directory: ${{ env.OPENWRT_DIR }}
+      shell: bash
+      run: |
+        echo "=========================================="
+        echo "下载 iStoreOS 软件包"
+        echo "=========================================="
+
+        make download -j8
+
+        echo "========== 检查异常小文件 =========="
+
+        find dl \
+          -type f \
+          -size -1024c \
+          -print \
+          -delete || true
+
+        echo "软件包下载完成"
+
+    - name: 编译固件
+      id: compile
+      if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_firmware }}
+      working-directory: ${{ env.OPENWRT_DIR }}
+      shell: bash
+      run: |
+        echo "=========================================="
+        echo "开始编译 iStoreOS 6.x"
+        echo "=========================================="
+
+        echo "CPU线程：$(nproc)"
+        echo "开始时间：$(date)"
+
+        echo "========== 内存 =========="
+
+        free -h
+
+        echo "========== 磁盘 =========="
+
+        df -hT .
+        df -ih .
+
+        echo "=========================================="
+        echo "第一阶段：多线程编译"
+        echo "=========================================="
+
+        if make -j"$(nproc)"; then
+
+          echo "=========================================="
+          echo "多线程编译成功"
+          echo "=========================================="
+
+        else
+
+          echo "=========================================="
+          echo "多线程编译失败"
+          echo "第二阶段：单线程编译"
+          echo "=========================================="
+
+          if make -j1; then
+
+            echo "=========================================="
+            echo "单线程编译成功"
+            echo "=========================================="
+
+          else
+
+            echo "=========================================="
+            echo "单线程编译失败"
+            echo "第三阶段：单线程详细日志"
+            echo "=========================================="
+
+            make -j1 V=s
+
           fi
 
-      - name: 执行 DIY Part1
-        run: |
-          cd "$OPENWRT_DIR"
+        fi
 
-          if [ -f "$GITHUB_WORKSPACE/$DIY_P1_SH" ]; then
-            cp "$GITHUB_WORKSPACE/$DIY_P1_SH" diy-part1.sh
-            chmod +x diy-part1.sh
-            ./diy-part1.sh
-          fi
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> "$GITHUB_ENV"
 
-      - name: 执行 DIY Part2
-        run: |
-          cd "$OPENWRT_DIR"
+        echo "status=success" >> "$GITHUB_OUTPUT"
 
-          if [ -f "$GITHUB_WORKSPACE/$DIY_P2_SH" ]; then
-            cp "$GITHUB_WORKSPACE/$DIY_P2_SH" diy-part2.sh
-            chmod +x diy-part2.sh
-            ./diy-part2.sh
-          fi
+        echo "=========================================="
+        echo "编译成功"
+        echo "结束时间：$(date)"
+        echo "=========================================="
 
-      - name: 生成最终配置
-        run: |
-          cd "$OPENWRT_DIR"
+    - name: 检查编译结果
+      if: steps.compile.outputs.status == 'success'
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        echo "========== 编译结果 =========="
 
-          make defconfig
+        find bin/targets \
+          -type f \
+          | sort
 
-          echo "===== 最终目标设备 ====="
-          grep '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$' .config || true
+    - name: 查找 KO 驱动
+      if: steps.compile.outputs.status == 'success'
+      working-directory: ${{ env.OPENWRT_DIR }}
+      run: |
+        echo "========== KO 驱动 =========="
 
-          COUNT=$(grep '^CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_.*=y$' .config | wc -l)
+        find . \
+          -type f \
+          -name "*.ko" \
+          | head -200 || true
 
-          echo "检测到 Rockchip ARM64 设备数量：$COUNT"
+    - name: 编译后检查磁盘
+      if: always()
+      run: |
+        echo "========== /workdir =========="
 
-          if [ "$COUNT" -ne 1 ]; then
-            echo "ERROR: Rockchip ARM64 目标设备不是唯一设备"
-            exit 1
-          fi
+        df -hT "$WORKDIR"
+        df -ih "$WORKDIR"
 
-      - name: 上传最终配置
-        uses: actions/upload-artifact@v4
-        with:
-          name: final-config
-          path: ${{ env.OPENWRT_DIR }}/.config
-          retention-days: 7
+        echo "========== Workspace =========="
 
-      - name: 编译缓存
-        uses: klever1988/cachewrtbuild@main
-        with:
-          ccache: true
-          toolchain: true
+        df -hT "$GITHUB_WORKSPACE"
+        df -ih "$GITHUB_WORKSPACE"
 
-      - name: 编译前检查磁盘
-        run: |
-          cd "$OPENWRT_DIR"
+        echo "========== 根分区 =========="
 
-          echo "===== 编译目录 ====="
-          df -hT .
-          df -ih .
+        df -hT /
+        df -ih /
 
-          echo "===== /workdir ====="
-          df -hT "$WORKDIR"
-          df -ih "$WORKDIR"
+    - name: 上传 bin 文件夹
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: iStoreOS-6.x-bin${{ env.FILE_DATE }}
+        path: ${{ env.OPENWRT_DIR }}/bin
+        retention-days: 30
 
-          echo "===== Workspace ====="
-          df -hT "$GITHUB_WORKSPACE"
-          df -ih "$GITHUB_WORKSPACE"
+    - name: 整理固件
+      id: organize
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_FIRMWARE == 'true'
+      shell: bash
+      run: |
+        echo "=========================================="
+        echo "整理 iStoreOS 固件"
+        echo "=========================================="
 
-          echo "===== 根分区 ====="
-          df -hT /
-          df -ih /
+        FIRMWARE_DIR=$(find \
+          "$OPENWRT_DIR/bin/targets" \
+          -mindepth 2 \
+          -maxdepth 2 \
+          -type d \
+          | head -1)
 
-      - name: 下载源码包
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_firmware }}
-        run: |
-          cd "$OPENWRT_DIR"
+        if [ -z "$FIRMWARE_DIR" ]; then
 
-          make download -j8
+          echo "ERROR: 找不到固件目录"
 
-          find dl -type f -size -1024c -print -delete || true
+          find "$OPENWRT_DIR/bin/targets" \
+            -maxdepth 3 \
+            -type d \
+            -print || true
 
-      - name: 编译固件
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.build_firmware }}
-        run: |
-          cd "$OPENWRT_DIR"
+          exit 1
 
-          echo "===== 开始编译 ====="
-          echo "CPU: $(nproc)"
-          echo "===== 内存 ====="
-          free -h
-          echo "===== 磁盘 ====="
-          df -hT .
-          df -ih .
+        fi
 
-          make -j"$(nproc)"
+        cd "$FIRMWARE_DIR"
 
-      - name: 编译失败后单线程重试
-        if: ${{ failure() && (github.event_name != 'workflow_dispatch' || inputs.build_firmware) }}
-        run: |
-          cd "$OPENWRT_DIR"
+        echo "固件目录：$PWD"
 
-          echo "===== 多线程编译失败，开始单线程详细编译 ====="
+        rm -rf packages
 
-          make -j1 V=s
+        echo "========== 删除无用文件 =========="
 
-      - name: 编译后检查磁盘
-        if: always()
-        run: |
-          echo "===== /workdir ====="
-          df -hT "$WORKDIR"
-          df -ih "$WORKDIR"
+        find . \
+          -maxdepth 1 \
+          -type f \
+          ! -name '*.img.gz' \
+          ! -name '*.manifest' \
+          ! -name 'sha256sums' \
+          -delete
 
-          echo "===== Workspace ====="
-          df -hT "$GITHUB_WORKSPACE"
-          df -ih "$GITHUB_WORKSPACE"
+        echo "========== 检查固件 =========="
 
-          echo "===== 根分区 ====="
-          df -hT /
-          df -ih /
+        if ! find . \
+          -maxdepth 1 \
+          -type f \
+          -name '*.img.gz' \
+          -print \
+          -quit \
+          | grep -q .; then
 
-      - name: 整理固件
-        if: ${{ success() && (github.event_name != 'workflow_dispatch' || inputs.build_firmware) }}
-        run: |
-          cd "$OPENWRT_DIR/bin/targets/"*/*
+          echo "ERROR: 未找到 .img.gz 固件"
 
-          rm -rf packages
+          ls -lah
 
-          find . -maxdepth 1 -type f \
-            ! -name '*.img.gz' \
-            ! -name '*.manifest' \
-            ! -name 'sha256sums' \
-            -delete
+          exit 1
 
-          test -n "$(find . -maxdepth 1 -type f -name '*.img.gz' -print -quit)"
+        fi
 
-          echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
+        echo "FIRMWARE=$PWD" >> "$GITHUB_ENV"
 
-          echo "===== 固件 ====="
-          ls -lh
+        echo "status=success" >> "$GITHUB_OUTPUT"
 
-      - name: 上传 bin 目录
-        if: ${{ success() && env.UPLOAD_BIN_DIR == 'true' && (github.event_name != 'workflow_dispatch' || inputs.build_firmware) }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: iStoreOS-6.x-bin
-          path: ${{ env.OPENWRT_DIR }}/bin/targets/
-          retention-days: 7
+        echo "========== 固件文件 =========="
 
-      - name: 上传固件
-        if: ${{ success() && env.UPLOAD_FIRMWARE == 'true' && (github.event_name != 'workflow_dispatch' || inputs.build_firmware) }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: iStoreOS-6.x-firmware
-          path: |
-            ${{ env.FIRMWARE }}/*.img.gz
-            ${{ env.FIRMWARE }}/sha256sums
-          if-no-files-found: error
-          retention-days: 7
+        ls -lh
 
-      - name: 发布 Release
-        if: ${{ success() && env.UPLOAD_RELEASE == 'true' && (github.event_name != 'workflow_dispatch' || inputs.build_firmware) }}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ format('{0}-armv8', github.run_number) }}
-          name: iStoreOS 6.x ARMv8 Build ${{ github.run_number }}
-          body: |
-            iStoreOS 6.x ARMv8 自动编译
+    - name: 上传固件目录
+      if: steps.organize.outputs.status == 'success'
+      uses: actions/upload-artifact@v4
+      with:
+        name: iStoreOS-6.x-firmware${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}
+        retention-days: 30
 
-            管理地址：192.168.100.1
-            用户名：root
-            密码：password
+    - name: 生成发布信息
+      id: tag
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_RELEASE == 'true'
+      shell: bash
+      run: |
+        TAG="$(date +"%Y.%m.%d-%H.%M")-armv8"
 
-            架构：ARMv8
-            分支：istoreos-24.10
+        echo "release_tag=$TAG" >> "$GITHUB_OUTPUT"
 
-            GitHub Actions Run：
-            ${{ github.run_number }}
-          files: |
-            ${{ env.FIRMWARE }}/*.img.gz
-            ${{ env.FIRMWARE }}/sha256sums
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        cat > release.txt <<EOF
+        ## iStoreOS 6.x ARMv8
 
-      - name: 删除旧 Actions
-        if: always()
-        continue-on-error: true
-        run: |
-          echo "保留最近 20 次 Actions 运行记录"
+        - 架构：ARMv8
+        - 平台：Rockchip ARM64
+        - 源码：$REPO_URL
+        - 分支：$REPO_BRANCH
+        - 编译时间：$(date +"%Y-%m-%d %H:%M")
+        - 管理地址：192.168.100.1
+        - 用户名：root
+        - 密码：password
 
-          gh run list \
-            --limit 100 \
-            --json databaseId \
-            --jq '.[20:] | .[].databaseId' |
-          while read -r id; do
-            [ -n "$id" ] && gh run delete "$id" || true
-          done
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        本版本为 iStoreOS 6.x Rockchip ARM64 云编译版本。
 
-      - name: 删除旧 Release
-        if: always()
-        continue-on-error: true
-        run: |
-          echo "保留最近 20 个 Release"
+        GitHub Actions Run：
+        ${{ github.run_number }}
+        EOF
 
-          gh release list \
-            --limit 100 \
-            --json tagName,isLatest \
-            --jq '.[20:] | .[].tagName' |
-          while read -r tag; do
-            [ -n "$tag" ] && gh release delete "$tag" --yes || true
-          done
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        echo "========== Release Tag =========="
+
+        echo "$TAG"
+
+        echo "status=success" >> "$GITHUB_OUTPUT"
+
+    - name: 发布固件
+      uses: softprops/action-gh-release@v2
+      if: steps.tag.outputs.status == 'success'
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        name: iStoreOS 6.x ARMv8 ${{ steps.tag.outputs.release_tag }}
+        body_path: release.txt
+        files: |
+          ${{ env.FIRMWARE }}/*.img.gz
+          ${{ env.FIRMWARE }}/sha256sums
+        fail_on_unmatched_files: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: 删除旧 Workflow
+      uses: xiaomeng9597/delete-workflow-runs@main
+      if: always()
+      continue-on-error: true
+      with:
+        retain_days: 20
+        keep_minimum_runs: 15
+        token: ${{ env.GITHUB_TOKEN }}
+
+    - name: 删除旧 Releases
+      uses: dev-drprasad/delete-older-releases@v0.3.3
+      if: env.UPLOAD_RELEASE == 'true'
+      continue-on-error: true
+      with:
+        keep_latest: 60
+        delete_tags: true
+        keep_min_download_counts: 0
+        delete_expired_data: 0
+        delete_prerelease_only: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
