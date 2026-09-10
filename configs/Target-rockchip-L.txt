@@ -1,0 +1,15 @@
+#target
+CONFIG_TARGET_rockchip=y
+CONFIG_TARGET_rockchip_armv8=y
+CONFIG_TARGET_MULTI_PROFILE=y
+
+
+CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_opc-h68k=y
+
+
+#rootfs
+CONFIG_TARGET_ROOTFS_EXT4FS=n
+CONFIG_TARGET_ROOTFS_PARTSIZE=512
+
+#luci
+CONFIG_PACKAGE_luci-app-cpufreq=y

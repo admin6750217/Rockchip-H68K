@@ -1,0 +1,492 @@
+config smartdns
+	option server_name 'smartdns'
+	option auto_set_dnsmasq '1'
+	option tcp_server '1'
+	option ipv6_server '1'
+	option bind_device '1'
+	option dualstack_ip_selection '1'
+	option serve_expired '1'
+	option cache_persist '1'
+	option resolve_local_hostnames '1'
+	option force_https_soa '0'
+	option rr_ttl_min '600'
+	option seconddns_port '6553'
+	option seconddns_tcp_server '1'
+	option seconddns_enabled '1'
+	option seconddns_force_aaaa_soa '1'
+	option enabled '0'
+	option port '1053'
+	option seconddns_server_group 'oceans'
+	option prefetch_domain '1'
+	option old_port '1053'
+	option old_enabled '0'
+	option old_auto_set_dnsmasq '1'
+	option cache_size '10000'
+
+
+config domain-rule
+
+
+config client-rule
+
+
+config ip-rule
+
+
+# =========================================================
+# 中国大陆
+# 默认 DNS 组
+# =========================================================
+
+# ---------- 阿里 DNS ----------
+config server
+	option enabled '1'
+	option name 'AliDNS'
+	option ip 'dns.alidns.com/dns-query'
+	option type 'https'
+
+config server
+	option enabled '0'
+	option name 'AliDNS-2'
+	option ip '223.6.6.6/dns-query'
+	option type 'https'
+
+
+# ---------- 腾讯 DNSPod ----------
+config server
+	option enabled '1'
+	option name 'DNSPod'
+	option ip 'doh.pub/dns-query'
+	option type 'https'
+
+# ---------- 腾讯 DNSPod 国密 SM2 ----------
+# 需要 SmartDNS/TLS 库支持 SM2/TLCP
+config server
+	option enabled '0'
+	option name 'DNSPod-SM2'
+	option ip 'sm2.doh.pub/dns-query'
+	option type 'https'
+
+
+# ---------- 360 DNS ----------
+config server
+	option enabled '1'
+	option name '360DNS'
+	option ip 'doh.360.cn/dns-query'
+	option type 'https'
+
+
+# ---------- OneDNS ----------
+config server
+	option enabled '1'
+	option name 'OneDNS-Pure'
+	option ip 'doh-pure.onedns.net/dns-query'
+	option type 'https'
+
+config server
+	option enabled '0'
+	option name 'OneDNS'
+	option ip 'doh.onedns.net/dns-query'
+	option type 'https'
+
+config server
+	option enabled '0'
+	option name 'OneDNS-Home'
+	option ip 'doh-home.onedns.net/dns-query'
+	option type 'https'
+
+
+# ---------- 中国大陆传统 DNS ----------
+# 非 DoH，仅作为备用
+
+config server
+	option enabled '0'
+	option name 'BaiduDNS'
+	option ip '180.76.76.76'
+	option type 'udp'
+
+config server
+	option enabled '0'
+	option name 'CNNIC-SDNS'
+	option ip '1.2.4.8'
+	option type 'udp'
+
+config server
+	option enabled '0'
+	option name 'CNNIC-SDNS-2'
+	option ip '210.2.4.8'
+	option type 'udp'
+
+config server
+	option enabled '0'
+	option name 'ByteDance-DNS'
+	option ip '180.184.1.1'
+	option type 'udp'
+
+
+# =========================================================
+# oceans
+# 香港
+# =========================================================
+
+config server
+	option enabled '1'
+	option name 'DNS-SB-HK'
+	option ip 'hk-hkg.doh.sb/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '1'
+	option name 'DNSCrypT-HK'
+	option ip 'hkg01.dnscry.pt/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# =========================================================
+# oceans
+# 澳门
+# =========================================================
+# 暂无加入未经充分验证的澳门公共 DoH
+
+
+# =========================================================
+# oceans
+# 台湾
+# =========================================================
+
+config server
+	option enabled '1'
+	option name 'Quad101'
+	option ip 'dns.twnic.tw/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'HiNet-TW'
+	option ip 'dns.hinet.net/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# =========================================================
+# oceans
+# 日本
+# =========================================================
+
+config server
+	option enabled '1'
+	option name 'IIJ-JP'
+	option ip 'public.dns.iij.jp/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '1'
+	option name 'DNS-SB-Tokyo'
+	option ip 'jp-nrt.doh.sb/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'DNS-SB-Osaka'
+	option ip 'jp-kix.doh.sb/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'TiAR-JP'
+	option ip 'jp.tiar.app/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# =========================================================
+# oceans
+# 新加坡
+# =========================================================
+
+config server
+	option enabled '0'
+	option name 'DNS-SB-Singapore'
+	option ip 'sg-si2.doh.sb/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'TiAR-SG'
+	option ip 'doh.tiar.app/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'TiARAP-SG'
+	option ip 'doh.tiarap.org/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# =========================================================
+# oceans
+# 全球核心
+# =========================================================
+
+# ---------- Cloudflare ----------
+config server
+	option enabled '1'
+	option name 'Cloudflare'
+	option ip 'cloudflare-dns.com/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# ---------- Google ----------
+config server
+	option enabled '1'
+	option name 'Google'
+	option ip 'dns.google/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# ---------- Quad9 ----------
+config server
+	option enabled '1'
+	option name 'Quad9'
+	option ip 'dns.quad9.net/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'Quad9-ECS'
+	option ip 'dns11.quad9.net/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# ---------- AdGuard ----------
+config server
+	option enabled '1'
+	option name 'AdGuard'
+	option ip 'dns.adguard-dns.com/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'AdGuard-Unfiltered'
+	option ip 'unfiltered.adguard-dns.com/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# =========================================================
+# oceans
+# DNS.SB 全球
+# =========================================================
+
+config server
+	option enabled '1'
+	option name 'DNS-SB'
+	option ip 'doh.dns.sb/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'DNS-SB-Frankfurt'
+	option ip 'de-fra.doh.sb/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'DNS-SB-Amsterdam'
+	option ip 'nl-ams.doh.sb/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'DNS-SB-London'
+	option ip 'uk-lon.doh.sb/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# =========================================================
+# oceans
+# OpenDNS
+# =========================================================
+
+config server
+	option enabled '0'
+	option name 'OpenDNS'
+	option ip 'doh.opendns.com/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'OpenDNS-Family'
+	option ip 'doh.familyshield.opendns.com/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# =========================================================
+# oceans
+# CleanBrowsing
+# =========================================================
+
+config server
+	option enabled '0'
+	option name 'CleanBrowsing-Security'
+	option ip 'doh.cleanbrowsing.org/doh/security-filter/'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'CleanBrowsing-Family'
+	option ip 'doh.cleanbrowsing.org/doh/family-filter/'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'CleanBrowsing-Adult'
+	option ip 'doh.cleanbrowsing.org/doh/adult-filter/'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# =========================================================
+# oceans
+# 欧洲
+# =========================================================
+
+config server
+	option enabled '0'
+	option name 'FFMUC'
+	option ip 'doh.ffmuc.net/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'LibreDNS'
+	option ip 'doh.libredns.gr/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'AppliedPrivacy'
+	option ip 'doh.applied-privacy.net/query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'UncensoredDNS'
+	option ip 'anycast.uncensoreddns.org/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'Digitalcourage'
+	option ip 'dns.digitalcourage.de/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# =========================================================
+# oceans
+# AhaDNS
+# =========================================================
+
+config server
+	option enabled '0'
+	option name 'AhaDNS-NL'
+	option ip 'doh.nl.ahadns.net/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'AhaDNS-LA'
+	option ip 'doh.la.ahadns.net/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+
+# =========================================================
+# oceans
+# 其他海外
+# =========================================================
+
+config server
+	option enabled '0'
+	option name 'Yandex'
+	option ip 'common.dot.dns.yandex.net/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name 'BebasDNS'
+	option ip 'dns.bebasid.com/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
+
+config server
+	option enabled '0'
+	option name '0ms-DNS'
+	option ip '0ms.dev/dns-query'
+	option type 'https'
+	option server_group 'oceans'
+	option exclude_default_group '1'
