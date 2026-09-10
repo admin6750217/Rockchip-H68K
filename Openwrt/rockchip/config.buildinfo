@@ -131,7 +131,7 @@ CONFIG_PACKAGE_luci-app-homeproxy=n
 CONFIG_PACKAGE_luci-app-lucky=y
 CONFIG_PACKAGE_luci-app-smartdns=y
 CONFIG_PACKAGE_luci-app-mosdns=y
-
+CONFIG_PACKAGE_luci-app-nikki=y
 # 存储 / 文件系统
 CONFIG_PACKAGE_block-mount=y
 CONFIG_PACKAGE_mount-utils=y
