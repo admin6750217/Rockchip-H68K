@@ -8,6 +8,23 @@ CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_h68k=y
 
 
 
+
+CONFIG_PACKAGE_luci-app-irqbalance=y
+
+CONFIG_PACKAGE_luci-app-pbr=y
+CONFIG_PACKAGE_luci-app-wol=y
+
+CONFIG_PACKAGE_luci-app-ddns=y
+
+CONFIG_PACKAGE_luci-app-tailscale=y
+CONFIG_PACKAGE_luci-app-zerotier=y
+CONFIG_PACKAGE_luci-app-iperf3-server=y
+CONFIG_PACKAGE_luci-app-watchcat=y
+
+
+
+
+
 CONFIG_PACKAGE_attendedsysupgrade-common=y
 CONFIG_PACKAGE_cgi-io=y
 CONFIG_PACKAGE_libiwinfo=y
