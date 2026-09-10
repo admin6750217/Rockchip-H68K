@@ -35,16 +35,6 @@ popd
 
 
 
-# ==========================================
-# H68K + MT7921
-# 默认开启所有 Wi-Fi
-#
-# 作用：
-# 1. 首次刷机启动时自动开启 Wi-Fi
-# 2. 恢复出厂后再次初始化时自动开启 Wi-Fi
-# 3. 不干扰用户后续在 LuCI 中手动关闭
-# ==========================================
-
 mkdir -p files/etc/uci-defaults
 
 cat > files/etc/uci-defaults/zz-enable-wifi <<'EOF'
@@ -52,29 +42,33 @@ cat > files/etc/uci-defaults/zz-enable-wifi <<'EOF'
 
 . /lib/functions.sh
 
-# 开启所有 Wi-Fi Radio
-enable_wifi_device() {
-    local cfg="$1"
-    uci -q set "wireless.${cfg}.disabled=0"
-}
+# 无线配置不存在时，自动生成
+if [ ! -s /etc/config/wireless ]; then
+    wifi config
+fi
 
-# 开启所有 Wi-Fi Interface
-enable_wifi_iface() {
-    local cfg="$1"
-    uci -q set "wireless.${cfg}.disabled=0"
-}
+# 开启所有 Wi-Fi
+if [ -s /etc/config/wireless ]; then
 
-# 读取无线配置
-config_load wireless
+    config_load wireless
 
-# 自动遍历所有 Wi-Fi Radio
-config_foreach enable_wifi_device wifi-device
+    enable_radio() {
+        local cfg="$1"
+        uci -q set "wireless.${cfg}.disabled=0"
+    }
 
-# 自动遍历所有 Wi-Fi Interface
-config_foreach enable_wifi_iface wifi-iface
+    enable_iface() {
+        local cfg="$1"
+        uci -q set "wireless.${cfg}.disabled=0"
+    }
 
-# 保存无线配置
-uci -q commit wireless
+    config_foreach enable_radio wifi-device
+    config_foreach enable_iface wifi-iface
+
+    uci -q commit wireless
+fi
 
 exit 0
 EOF
+
+chmod +x files/etc/uci-defaults/zz-enable-wifi
