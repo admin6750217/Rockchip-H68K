@@ -34,38 +34,25 @@ git clone -b master --depth 1 https://github.com/vernesong/OpenClash.git
 popd
 
 
-
 mkdir -p files/etc/uci-defaults
 
 cat > files/etc/uci-defaults/zz-enable-wifi <<'EOF'
 #!/bin/sh
-
 . /lib/functions.sh
 
-# 无线配置不存在时，自动生成
-if [ ! -s /etc/config/wireless ]; then
-    wifi config
-fi
+# 无线配置不存在则自动生成
+[ -s /etc/config/wireless ] || wifi config
 
 # 开启所有 Wi-Fi
 if [ -s /etc/config/wireless ]; then
-
-    config_load wireless
-
-    enable_radio() {
-        local cfg="$1"
-        uci -q set "wireless.${cfg}.disabled=0"
-    }
-
-    enable_iface() {
-        local cfg="$1"
-        uci -q set "wireless.${cfg}.disabled=0"
-    }
-
-    config_foreach enable_radio wifi-device
-    config_foreach enable_iface wifi-iface
-
-    uci -q commit wireless
+	config_load wireless
+	enable_wifi() {
+		local cfg="$1"
+		uci -q set "wireless.${cfg}.disabled=0"
+	}
+	config_foreach enable_wifi wifi-device
+	config_foreach enable_wifi wifi-iface
+	uci -q commit wireless
 fi
 
 exit 0
