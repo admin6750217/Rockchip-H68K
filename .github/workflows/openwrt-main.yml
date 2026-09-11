@@ -220,17 +220,11 @@ jobs:
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git config --global user.name "github-actions[bot]"
 
-    - name: config文件上传自动更新2
-      run: |
-        cd $GITHUB_WORKSPACE
-        git clone -b main https://github.com/${{ env.REPO }}.git main
-
     - name: config文件上传自动更新3
       run: |
-        cp ./openwrt/.config $GITHUB_WORKSPACE/main/${{ env.CONFIG_FILE }}
-        cp ./openwrt/bin/targets/*/*/config.buildinfo $GITHUB_WORKSPACE/main/${{ env.CONFIG_BUILD }}
-        cd $GITHUB_WORKSPACE/main
-        git add .
+        cp ./openwrt/.config $GITHUB_WORKSPACE/${{ env.CONFIG_FILE }}
+        cd $GITHUB_WORKSPACE
+        git add ${{ env.CONFIG_FILE }}
         if git diff --cached --quiet; then
           echo "nothing to commit"
         else
