@@ -1,4 +1,5 @@
 name: Openwrt_rockchip
+
 permissions: write-all
 
 on:
