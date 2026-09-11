@@ -7,8 +7,8 @@ CONFIG_TARGET_DEVICE_rockchip_armv8_DEVICE_hinlink_h68k=y
 # CONFIG_TARGET_ALL_PROFILES is not set
 
 # RootFS / 基础系统
-# CONFIG_TARGET_ROOTFS_EXT4FS is not set
 CONFIG_TARGET_ROOTFS_PARTSIZE=400
+# CONFIG_TARGET_ROOTFS_EXT4FS is not set
 CONFIG_PACKAGE_base-files=y
 CONFIG_PACKAGE_bash=y
 CONFIG_PACKAGE_autocore=y
@@ -33,9 +33,6 @@ CONFIG_PACKAGE_kmod-tcp-bbr=y
 CONFIG_PACKAGE_kmod-tun=y
 CONFIG_PACKAGE_ipv6helper=y
 
-CONFIG_PACKAGE_luci-app-filetransfer=y
-
-
 # Netfilter / Conntrack / NAT / TProxy
 CONFIG_PACKAGE_kmod-nf-conntrack=y
 CONFIG_PACKAGE_kmod-nf-conntrack-netlink=y
@@ -49,29 +46,17 @@ CONFIG_PACKAGE_kmod-nf-socket=y
 CONFIG_PACKAGE_kmod-nf-tproxy=y
 CONFIG_PACKAGE_kmod-nfnetlink=y
 
-CONFIG_PACKAGE_kmod-nf-conntrack=y
-CONFIG_PACKAGE_kmod-nf-conntrack-netlink=y
-CONFIG_PACKAGE_kmod-nf-nat=y
-CONFIG_PACKAGE_kmod-nfnetlink=y
-
+# nftables / FullCone NAT
 CONFIG_PACKAGE_kmod-nft-core=y
 CONFIG_PACKAGE_kmod-nft-fib=y
 CONFIG_PACKAGE_kmod-nft-fullcone=y
-CONFIG_PACKAGE_kmod-nft-nat=y
-CONFIG_PACKAGE_kmod-nft-socket=y
-
-CONFIG_PACKAGE_kmod-nft-fullcone=y
-CONFIG_PACKAGE_luci-app-fullconenat=y
-
-# nftables
-CONFIG_PACKAGE_kmod-nft-core=y
-CONFIG_PACKAGE_kmod-nft-fib=y
 CONFIG_PACKAGE_kmod-nft-nat=y
 CONFIG_PACKAGE_kmod-nft-offload=y
 CONFIG_PACKAGE_kmod-nft-socket=y
 CONFIG_PACKAGE_kmod-nft-tproxy=y
+CONFIG_PACKAGE_luci-app-fullconenat=y
 
-# LuCI / 管理
+# LuCI / 核心管理
 CONFIG_PACKAGE_luci=y
 CONFIG_PACKAGE_luci-base=y
 CONFIG_PACKAGE_luci-ssl=y
@@ -87,6 +72,8 @@ CONFIG_PACKAGE_luci-proto-ipv6=y
 CONFIG_PACKAGE_luci-proto-ppp=y
 CONFIG_PACKAGE_luci-theme-bootstrap=y
 CONFIG_LUCI_LANG_zh_Hans=y
+
+# LuCI / 中文语言包
 CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
 CONFIG_PACKAGE_luci-i18n-network-zh-cn=y
 CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y
@@ -100,28 +87,21 @@ CONFIG_PACKAGE_luci-app-firewall=y
 CONFIG_PACKAGE_luci-app-package-manager=y
 CONFIG_PACKAGE_luci-app-upnp=y
 CONFIG_PACKAGE_luci-app-filemanager=y
+CONFIG_PACKAGE_luci-app-filetransfer=y
 CONFIG_PACKAGE_luci-app-ttyd=y
 CONFIG_PACKAGE_luci-app-hd-idle=y
 CONFIG_PACKAGE_luci-app-cpufreq=y
 CONFIG_PACKAGE_luci-app-statistics=y
-
-
-
 CONFIG_PACKAGE_luci-app-irqbalance=y
-
-
-
 CONFIG_PACKAGE_luci-app-pbr=y
 CONFIG_PACKAGE_luci-app-wol=y
 CONFIG_PACKAGE_luci-app-ddns=y
-# CONFIG_PACKAGE_luci-app-tailscale is not set
-# CONFIG_PACKAGE_luci-app-zerotier is not set
 CONFIG_PACKAGE_luci-app-iperf3-server=y
 CONFIG_PACKAGE_luci-app-watchcat=y
 
-
-
-
+# LuCI / 禁用功能
+# CONFIG_PACKAGE_luci-app-tailscale is not set
+# CONFIG_PACKAGE_luci-app-zerotier is not set
 
 # LuCI / 依赖
 CONFIG_PACKAGE_attendedsysupgrade-common=y
@@ -149,14 +129,15 @@ CONFIG_PACKAGE_ucode-mod-uclient=y
 CONFIG_PACKAGE_uhttpd=y
 CONFIG_PACKAGE_uhttpd-mod-ubus=y
 
-# 代理 / DNS / DDNS
+# 代理 / DNS
 CONFIG_PACKAGE_luci-app-passwall=y
 CONFIG_PACKAGE_luci-app-openclash=y
-CONFIG_PACKAGE_luci-app-homeproxy=n
 CONFIG_PACKAGE_luci-app-lucky=y
 CONFIG_PACKAGE_luci-app-smartdns=y
 CONFIG_PACKAGE_luci-app-mosdns=y
 CONFIG_PACKAGE_luci-app-nikki=y
+CONFIG_PACKAGE_luci-app-homeproxy=n
+
 # 存储 / 文件系统
 CONFIG_PACKAGE_block-mount=y
 CONFIG_PACKAGE_mount-utils=y
@@ -277,6 +258,8 @@ CONFIG_PACKAGE_kmod-phy-realtek=y
 CONFIG_PACKAGE_kmod-fixed-phy=y
 CONFIG_PACKAGE_kmod-r8125=y
 CONFIG_PACKAGE_kmod-r8125-rss=y
+
+# PCIe / 禁用其他 Realtek 网卡驱动
 # CONFIG_PACKAGE_kmod-r8126 is not set
 # CONFIG_PACKAGE_kmod-r8168 is not set
 # CONFIG_PACKAGE_kmod-r8169 is not set
@@ -292,12 +275,12 @@ CONFIG_PACKAGE_kmod-mt7921u=y
 CONFIG_PACKAGE_kmod-mt7916-firmware=y
 CONFIG_PACKAGE_kmod-mt7922-firmware=y
 
-# WiFi / WPA / 无线信息
+# WiFi / WPA / 无线认证
 CONFIG_PACKAGE_hostapd-openssl=y
 CONFIG_PACKAGE_wpa-supplicant-openssl=y
 CONFIG_PACKAGE_wpa-cli=y
 
-# 禁用 WiFi 驱动
+# WiFi / 禁用驱动
 # CONFIG_PACKAGE_kmod-rtl8xxxu is not set
 # CONFIG_PACKAGE_kmod-rtl8812au is not set
 # CONFIG_PACKAGE_kmod-rtl8821cu is not set
