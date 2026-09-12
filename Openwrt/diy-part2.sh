@@ -21,9 +21,9 @@ pushd package/small
 #git clone -b master --depth 1 https://github.com/eamonxg/luci-theme-aurora.git
 #git clone -b main --depth 1 https://github.com/sirpdboy/luci-app-timecontrol.git
 git clone -b master --depth 1 https://github.com/immortalwrt/homeproxy.git
-#git clone -b main --depth 1 https://github.com/gdy666/luci-app-lucky.git
+git clone -b main --depth 1 https://github.com/gdy666/luci-app-lucky.git
 
-#git clone -b main --depth 1 https://github.com/Openwrt-Passwall/openwrt-passwall.git ../passwall-luci
+git clone -b main --depth 1 https://github.com/Openwrt-Passwall/openwrt-passwall.git ../passwall-luci
 #git clone -b main --depth 1 https://github.com/Openwrt-Passwall/openwrt-passwall2.git
 git clone -b v5 --depth 1 https://github.com/sbwml/luci-app-mosdns.git
 
