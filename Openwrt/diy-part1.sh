@@ -9,43 +9,43 @@ sed -i '/^[[:space:]]*net\.netfilter\.nf_conntrack_max[[:space:]]*=/d' package/b
 echo 'net.netfilter.nf_conntrack_max=655550' >> package/base-files/files/etc/sysctl.conf
 
 # 添加软件源
-sed -i '1i src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
-sed -i '2i src-git small https://github.com/kenzok8/small' feeds.conf.default
+#sed -i '1i src-git kenzo https://github.com/kenzok8/openwrt-packages' feeds.conf.default
+#sed -i '2i src-git small https://github.com/kenzok8/small' feeds.conf.default
 #sed -i '3i src-git smpackage https://github.com/kenzok8/small-package' feeds.conf.default
 #sed -i '4i src-git op https://github.com/kiddin9/op-packages' feeds.conf.default
 
 # 删除官方冲突包
-rm -rf feeds/luci/applications/luci-app-passwall
-rm -rf feeds/luci/applications/luci-app-passwall2
-rm -rf feeds/luci/applications/luci-app-openclash
-rm -rf feeds/luci/applications/luci-app-homeproxy
-rm -rf feeds/luci/applications/luci-app-lucky
-rm -rf feeds/luci/applications/luci-app-smartdns
-rm -rf feeds/luci/applications/luci-app-mosdns
+# rm -rf feeds/luci/applications/luci-app-passwall
+# rm -rf feeds/luci/applications/luci-app-passwall2
+# rm -rf feeds/luci/applications/luci-app-openclash
+# rm -rf feeds/luci/applications/luci-app-homeproxy
+# rm -rf feeds/luci/applications/luci-app-lucky
+# rm -rf feeds/luci/applications/luci-app-smartdns
+# rm -rf feeds/luci/applications/luci-app-mosdns
 
-rm -rf feeds/packages/net/xray-core
-rm -rf feeds/packages/net/v2ray-geodata
-rm -rf feeds/packages/net/sing-box
-rm -rf feeds/packages/net/chinadns-ng
-rm -rf feeds/packages/net/dns2socks
-rm -rf feeds/packages/net/hysteria
-rm -rf feeds/packages/net/ipt2socks
-rm -rf feeds/packages/net/microsocks
-rm -rf feeds/packages/net/naiveproxy
-rm -rf feeds/packages/net/shadowsocks-rust
-rm -rf feeds/packages/net/shadowsocksr-libev
-rm -rf feeds/packages/net/simple-obfs
-rm -rf feeds/packages/net/tcping
-rm -rf feeds/packages/net/v2ray-plugin
-rm -rf feeds/packages/net/xray-plugin
-rm -rf feeds/packages/net/geoview
-rm -rf feeds/packages/net/shadow-tls
-rm -rf feeds/packages/net/alist
-rm -rf feeds/packages/net/adguardhome
-rm -rf feeds/packages/net/mosdns
-rm -rf feeds/packages/net/smartdns
+# rm -rf feeds/packages/net/xray-core
+# rm -rf feeds/packages/net/v2ray-geodata
+# rm -rf feeds/packages/net/sing-box
+# rm -rf feeds/packages/net/chinadns-ng
+# rm -rf feeds/packages/net/dns2socks
+# rm -rf feeds/packages/net/hysteria
+# rm -rf feeds/packages/net/ipt2socks
+# rm -rf feeds/packages/net/microsocks
+# rm -rf feeds/packages/net/naiveproxy
+# rm -rf feeds/packages/net/shadowsocks-rust
+# rm -rf feeds/packages/net/shadowsocksr-libev
+# rm -rf feeds/packages/net/simple-obfs
+# rm -rf feeds/packages/net/tcping
+# rm -rf feeds/packages/net/v2ray-plugin
+# rm -rf feeds/packages/net/xray-plugin
+# rm -rf feeds/packages/net/geoview
+# rm -rf feeds/packages/net/shadow-tls
+# rm -rf feeds/packages/net/alist
+# rm -rf feeds/packages/net/adguardhome
+# rm -rf feeds/packages/net/mosdns
+# rm -rf feeds/packages/net/smartdns
 
-rm -rf feeds/packages/utils/v2dat
+# rm -rf feeds/packages/utils/v2dat
 
 # Golang
 rm -rf feeds/packages/lang/golang
