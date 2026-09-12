@@ -17,7 +17,7 @@ echo 'net.netfilter.nf_conntrack_max=655550' >> package/base-files/files/etc/sys
 # 删除 feeds 中的官方冲突包
 rm -rf ./feeds/packages/net/{geoview,chinadns-ng,hysteria,mosdns,v2ray-geodata,lucky}
 rm -rf ./feeds/packages/net/{shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev}
-rm -rf ./feeds/packages/net/{sing-box,v2ray-geodata,v2ray-plugin,xray-core,smartdns}
+rm -rf ./feeds/packages/net/{sing-box,v2ray-geodata,v2ray-plugin,xray-core}
 
 rm -rf ./feeds/luci/applications/{luci-app-passwall,luci-app-passwall2,luci-app-openclash,luci-app-homeproxy}
 rm -rf ./feeds/luci/applications/{luci-app-lucky,luci-app-smartdns,luci-app-timecontrol,luci-app-mosdns}
@@ -49,18 +49,9 @@ https://github.com/Openwrt-Passwall/openwrt-passwall.git
 git clone -b main --depth 1 \
 https://github.com/Openwrt-Passwall/openwrt-passwall2.git
 
-# SmartDNS
+# SmartDNS LuCI
 git clone -b master --depth 1 \
 https://github.com/pymumu/luci-app-smartdns.git
-
-git clone -b master --depth 1 \
-https://github.com/pymumu/smartdns.git
-
-sed -i \
-'s@include ../../lang/rust/rust-package.mk@include $(TOPDIR)/feeds/packages/lang/rust/rust-package.mk@g' \
-smartdns/package/openwrt/Makefile
-
-sed -n '33p' smartdns/package/openwrt/Makefile
 
 # MosDNS
 git clone -b v5 --depth 1 \
